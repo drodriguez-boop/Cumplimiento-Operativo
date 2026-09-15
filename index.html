@@ -104,6 +104,12 @@ tr.gerente-row:not(:first-child) td{border-top:1px solid var(--rule-strong);}
 .deadline{font-family:var(--font-mono);font-size:12px;color:var(--muted);}
 button.action{font-family:var(--font-sans);font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:6px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);cursor:pointer;}
 button.action:hover{background:var(--accent);color:var(--paper-pure);}
+button.action:disabled{opacity:.55;cursor:not-allowed;}
+.archivo-btn{font-family:var(--font-mono);font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:99px;border:1px solid var(--accent);background:none;color:var(--accent);cursor:pointer;}
+.archivo-btn:hover{background:var(--accent-soft);}
+.archivo-btn:disabled{opacity:.55;cursor:not-allowed;}
+.file-error{color:var(--critical);font-size:12px;margin:-6px 0 14px;}
+.file-hint{font-size:11px;color:var(--muted-soft);margin-top:4px;line-height:1.4;}
 .err-toggle{display:flex;gap:6px;}
 .err-toggle button{font-family:var(--font-sans);font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid var(--rule-strong);background:var(--paper-pure);color:var(--muted);cursor:pointer;}
 .err-toggle button.sel-ok-btn:hover{background:var(--positive-soft);border-color:var(--positive);color:var(--positive);}
@@ -352,7 +358,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
   </div>
 
   <div class="notes">
-    <strong>Antes de usar esto en serio:</strong> este prototipo no lee el contenido de los Excel — solo registra <em>quién confirmó entrega y cuándo</em>, y lo compara contra el plazo calculado. No hay forma de adjuntar el archivo aquí todavía (esta vista no tiene almacenamiento de archivos); cuando se migre a Vercel se puede agregar carga real.
+    <strong>Antes de usar esto en serio:</strong> este prototipo no lee el contenido de los Excel — solo registra <em>quién confirmó entrega y cuándo</em>, y lo compara contra el plazo calculado. Ya se puede adjuntar el archivo real (PDF, Excel, Word, JPG o PNG, máx. 20 MB) al confirmar la entrega; subir uno nuevo reemplaza al anterior.
     <ul>
       <li>Los días de proceso interno de Nómina (arriba) siguen siendo un supuesto mío — falta que Josie los confirme.</li>
       <li>Si el pago cae el 30 en un mes que no tiene 30 días (ej. febrero), se usa el último día del mes — avísenle a Josie por si aplica otra regla.</li>
@@ -416,7 +422,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
   </div>
 
   <div class="notes">
-    <strong>Antes de usar esto en serio:</strong> igual que en nómina, esto no lee el contenido del Excel del plan de trabajo — solo registra que se marcó como cargado y compara contra el plazo calculado.
+    <strong>Antes de usar esto en serio:</strong> igual que en nómina, esto no lee el contenido del Excel del plan de trabajo — solo registra que se marcó como cargado y compara contra el plazo calculado. Ya se puede adjuntar el archivo real (PDF, Excel, Word, JPG o PNG, máx. 20 MB) al marcar el plan como cargado; subir uno nuevo reemplaza al anterior.
     <ul>
       <li>El plazo se calcula como el <strong>4° día hábil contando hacia atrás desde el último día hábil del mes que cierra</strong> (el último día hábil cuenta como el primero de esos 4) — así da 25-sep para el plan de octubre, como me confirmaste. Ajustable en Configuración.</li>
       <li>El % usa la misma lógica que nómina: por gerente, peso igual entre todos, promedio simple si trae varias cuentas.</li>
@@ -476,7 +482,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
   </div>
 
   <div class="notes">
-    <strong>Antes de usar esto en serio:</strong> esta vista de Claude no permite que se suban archivos reales todavía — no tiene esa capacidad habilitada. Por ahora, al marcar "Comprobado" se registra si el comprobante es fiscal (CFDI) o no fiscal, más una referencia de texto (folio, RFC o nombre del archivo) y quién lo confirma — pero el PDF/foto en sí no se guarda aquí. La carga real del archivo se agrega cuando esto se migre a Vercel.
+    <strong>Antes de usar esto en serio:</strong> al marcar "Comprobado" se registra si el comprobante es fiscal (CFDI) o no fiscal, más una referencia de texto (folio, RFC o nombre del archivo) y quién lo confirma — y ya se puede adjuntar el archivo real (PDF, Excel, Word, JPG o PNG, máx. 20 MB). Un archivo nuevo reemplaza al anterior para ese mismo gasto.
     <ul>
       <li>El cierre de mes se calcula como el último día calendario del mes (no se ajusta si cae en fin de semana) — avísame si para gastos debe ser el último día hábil, como en nómina.</li>
       <li>El flujo de estatus (Cargado → Aprobado → Pagado → Comprobado) hoy es el mismo para los 3 tipos de gasto (gasto por comprobar, reembolso con factura previa, pago a proveedor). Si alguno debe saltarse un paso (por ejemplo, si ya trae factura desde el inicio), dímelo y lo ajusto.</li>
@@ -500,6 +506,12 @@ details.config[open] summary::before{transform:rotate(90deg);}
     <h3 id="promptTitle">Confirmar entrega</h3>
     <p id="promptSub">¿Quién está confirmando esto?</p>
     <input type="text" id="promptName" placeholder="Tu nombre">
+    <div class="field" id="promptFileRow">
+      <label>Archivo (opcional)</label>
+      <input type="file" id="promptFile" accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png">
+      <div class="file-hint">PDF, Excel, Word, JPG o PNG · máx. 20 MB. Si ya había un archivo, este lo reemplaza.</div>
+      <p class="file-error" id="promptFileError" hidden></p>
+    </div>
     <div class="row">
       <button class="cancel" id="promptCancel" type="button">Cancelar</button>
       <button class="confirm" id="promptConfirm" type="button">Confirmar</button>
@@ -565,7 +577,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
 <div class="name-prompt" id="comprobarPrompt">
   <div class="name-card">
     <h3 id="comprobarPromptTitle">Marcar comprobado</h3>
-    <p>Esta vista todavía no permite adjuntar el archivo real (eso llega con la migración a Vercel) — mientras tanto, registra el tipo de comprobante y una referencia. Si el gasto se comprueba en varias partes, puedes registrar cada abono por separado.</p>
+    <p>Registra el tipo de comprobante, una referencia y, si quieres, el archivo real. Si el gasto se comprueba en varias partes, puedes registrar cada abono por separado — el archivo adjunto es uno solo por gasto (subir uno nuevo reemplaza al anterior).</p>
     <p class="field-hint" id="comprobarResumen" style="font-family:var(--font-mono);font-size:11.5px;color:var(--muted);margin:-6px 0 14px;"></p>
     <div class="field">
       <label>Monto que estás comprobando ahora</label>
@@ -585,6 +597,12 @@ details.config[open] summary::before{transform:rotate(90deg);}
     <div class="field">
       <label>Tu nombre</label>
       <input type="text" id="comprobarPor" placeholder="Quién lo confirma">
+    </div>
+    <div class="field">
+      <label>Archivo del comprobante (opcional)</label>
+      <input type="file" id="comprobarFile" accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png">
+      <div class="file-hint" id="comprobarFileHint">PDF, Excel, Word, JPG o PNG · máx. 20 MB. Si ya había un archivo para este gasto, este lo reemplaza.</div>
+      <p class="file-error" id="comprobarFileError" hidden></p>
     </div>
     <div class="row">
       <button class="cancel" id="comprobarCancel" type="button">Cancelar</button>
@@ -789,6 +807,62 @@ function createSupabaseDb(client){
   };
 }
 
+// --- Archivos adjuntos (Supabase Storage) ---
+// Bucket privado: nunca se asume URL pública, siempre se pide una URL firmada al momento de
+// verla. La ruta de cada archivo es fija por registro (cuenta+periodo, o el id del gasto) para
+// que volver a subir uno reemplace al anterior (upsert:true) en vez de acumular versiones.
+const STORAGE_BUCKET = 'adjuntos-cumplimiento';
+const ACCEPTED_EXTS = ['pdf','xlsx','xls','doc','docx','jpg','jpeg','png'];
+const MAX_FILE_BYTES = 20*1024*1024;
+
+function extOf(filename){
+  const m = /\.([a-zA-Z0-9]+)$/.exec(filename||'');
+  return m ? m[1].toLowerCase() : '';
+}
+function validateFile(file){
+  const ext = extOf(file.name);
+  if(!ACCEPTED_EXTS.includes(ext)){
+    return {ok:false, msg:'Tipo de archivo no permitido. Usa PDF, Excel (.xlsx/.xls), Word (.doc/.docx), JPG o PNG.'};
+  }
+  if(file.size > MAX_FILE_BYTES){
+    return {ok:false, msg:'El archivo pesa más de 20 MB, intenta con uno más ligero.'};
+  }
+  return {ok:true, ext};
+}
+function pathNomina(cuentaId, obKey, ext){ return `nomina/${cuentaId}/${obKey}.${ext}`; }
+function pathPlan(cuentaId, mesKey, ext){ return `plan/${cuentaId}/${mesKey}.${ext}`; }
+function pathGasto(cuentaId, gastoId, ext){ return `gastos/${cuentaId}/${gastoId}.${ext}`; }
+async function subirArchivo(file, path){
+  try{
+    const { error } = await supaClient.storage.from(STORAGE_BUCKET).upload(path, file, { upsert:true, contentType: file.type || undefined });
+    if(error) throw error;
+    return {ok:true};
+  }catch(e){
+    console.error(e);
+    return {ok:false, msg:'No se pudo subir el archivo, intenta de nuevo.'};
+  }
+}
+async function verArchivo(path, btn){
+  if(!path) return;
+  const original = btn ? btn.textContent : null;
+  if(btn){ btn.disabled = true; btn.textContent = 'Abriendo…'; }
+  try{
+    const { data, error } = await supaClient.storage.from(STORAGE_BUCKET).createSignedUrl(path, 60*5);
+    if(error) throw error;
+    if(data && data.signedUrl) window.open(data.signedUrl, '_blank');
+    else throw new Error('sin signedUrl');
+  }catch(e){
+    console.error(e);
+    alert('No se pudo abrir el archivo, intenta de nuevo.');
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = original; }
+  }
+}
+function archivoBtnHtml(path){
+  if(!path) return '';
+  return `<button type="button" class="archivo-btn" onclick="verArchivo('${path}', this)">Ver archivo</button>`;
+}
+
 // --- KPI 3 · Emetrix ---
 let configEmetrix = {diasEmetrix:4, abrahamEmail:''};
 let cumplimientoEmetrixDocs = {};
@@ -976,7 +1050,7 @@ function render(){
       if(confirmado){
         const ok = confirmado <= ob.limiteEC;
         const quien = rec.confirmadoPor ? `<div class="confirmado-por">${rec.confirmadoPor}</div>` : '';
-        chip = (ok ? `<span class="chip ok">✓ a tiempo</span>` : `<span class="chip bad">✕ fuera de tiempo</span>`) + quien;
+        chip = (ok ? `<span class="chip ok">✓ a tiempo</span>` : `<span class="chip bad">✕ fuera de tiempo</span>`) + ' ' + archivoBtnHtml(rec.archivoPath) + quien;
         eval1++; if(ok) onTime1++;
       } else if(today > ob.limiteEC){
         chip = `<span class="chip bad">✕ venció sin confirmar</span>`;
@@ -1130,7 +1204,7 @@ function renderEmetrix(){
     if(confirmado){
       const ok = confirmado <= per.deadline;
       const quien = rec.confirmadoPor ? `<div class="confirmado-por">Plan cargado por: ${rec.confirmadoPor}</div>` : '';
-      chip = (ok ? `<span class="chip ok">✓ a tiempo</span>` : `<span class="chip bad">✕ fuera de tiempo</span>`) + quien;
+      chip = (ok ? `<span class="chip ok">✓ a tiempo</span>` : `<span class="chip bad">✕ fuera de tiempo</span>`) + ' ' + archivoBtnHtml(rec.archivoPath) + quien;
       score = ok ? 1 : 0;
     } else if(today > per.deadline){
       chip = `<span class="chip bad">✕ venció sin cargar el plan</span>`;
@@ -1329,7 +1403,7 @@ function renderGastos(){
         <div class="status-pipe">${pips}</div>
         ${historial}
         ${comprobantesHtml}
-        <div class="gasto-actions">${accion}${resultado}</div>
+        <div class="gasto-actions">${accion}${archivoBtnHtml(g.archivoPath)}${resultado}</div>
       </div>`;
     }).join('');
   });
@@ -1507,6 +1581,12 @@ function renderPortada(){
 function renderAll(){ render(); renderEmetrix(); renderGastos(); renderPortada(); }
 
 let pendingConfirm = null;
+function resetPromptFileField(){
+  const fileInput = document.getElementById('promptFile');
+  const errEl = document.getElementById('promptFileError');
+  if(fileInput) fileInput.value = '';
+  if(errEl){ errEl.hidden = true; errEl.textContent = ''; }
+}
 function openPrompt(cuenta, obKey, obLabel, tipo){
   pendingConfirm = {cuenta, key:obKey, label:obLabel||'', tipo: tipo||'nomina'};
   const isEmetrix = pendingConfirm.tipo === 'emetrix';
@@ -1515,6 +1595,8 @@ function openPrompt(cuenta, obKey, obLabel, tipo){
     ? '¿Quién está cargando el plan de esta cuenta? Se marca como cumplido de inmediato.'
     : '¿Quién está confirmando esta entrega?';
   document.getElementById('promptName').value='';
+  document.getElementById('promptFileRow').hidden = false;
+  resetPromptFileField();
   document.getElementById('namePrompt').classList.add('show');
   document.getElementById('promptName').focus();
 }
@@ -1522,26 +1604,51 @@ document.getElementById('promptCancel').addEventListener('click', ()=>{
   document.getElementById('namePrompt').classList.remove('show'); pendingConfirm=null;
 });
 document.getElementById('promptConfirm').addEventListener('click', async ()=>{
+  if(!pendingConfirm || !db) { document.getElementById('namePrompt').classList.remove('show'); return; }
   const name = document.getElementById('promptName').value.trim() || 'Sin nombre';
-  document.getElementById('namePrompt').classList.remove('show');
-  if(!pendingConfirm || !db) return;
 
   if(pendingConfirm.tipo==='gasto_aprobar'){
+    document.getElementById('namePrompt').classList.remove('show');
     try{ await db.collection('gastos').doc(pendingConfirm.key).update({estado:'aprobado', fechaAprobado:new Date().toISOString(), aprobadoPor:name}); }
     catch(e){ console.error(e); }
     pendingConfirm=null; return;
   }
   if(pendingConfirm.tipo==='gasto_pagar'){
+    document.getElementById('namePrompt').classList.remove('show');
     try{ await db.collection('gastos').doc(pendingConfirm.key).update({estado:'pagado', fechaPagado:new Date().toISOString(), pagadoPor:name}); }
     catch(e){ console.error(e); }
     pendingConfirm=null; return;
   }
 
   const isEmetrix = pendingConfirm.tipo === 'emetrix';
+
+  // Si se eligió un archivo, se valida y sube ANTES de cerrar el modal y escribir el registro —
+  // así, si algo falla, el usuario ve el error y puede reintentar sin perder lo ya escrito.
+  const fileInput = document.getElementById('promptFile');
+  const file = fileInput && fileInput.files && fileInput.files[0];
+  const errEl = document.getElementById('promptFileError');
+  errEl.hidden = true; errEl.textContent = '';
+  let archivoPath = null, archivoNombre = null;
+  if(file){
+    const v = validateFile(file);
+    if(!v.ok){ errEl.textContent = v.msg; errEl.hidden = false; return; }
+    const btn = document.getElementById('promptConfirm');
+    const originalLabel = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Subiendo…';
+    const path = isEmetrix ? pathPlan(pendingConfirm.cuenta, pendingConfirm.key, v.ext) : pathNomina(pendingConfirm.cuenta, pendingConfirm.key, v.ext);
+    const up = await subirArchivo(file, path);
+    btn.disabled = false; btn.textContent = originalLabel;
+    if(!up.ok){ errEl.textContent = up.msg; errEl.hidden = false; return; }
+    archivoPath = path;
+    archivoNombre = file.name;
+  }
+
+  document.getElementById('namePrompt').classList.remove('show');
   const coll = isEmetrix ? 'cumplimientoEmetrix' : 'cumplimiento';
   const docsMap = isEmetrix ? cumplimientoEmetrixDocs : cumplimientoDocs;
   const id = docId(pendingConfirm.cuenta, pendingConfirm.key);
   const body = {cuenta: pendingConfirm.cuenta, periodo: pendingConfirm.key, fechaConfirmacion: new Date().toISOString(), confirmadoPor: name};
+  if(archivoPath){ body.archivoPath = archivoPath; body.archivoNombre = archivoNombre; }
   const ref = db.collection(coll).doc(id);
   try{
     if(docsMap[id]) await ref.update(body); else await ref.set(body);
@@ -1701,6 +1808,8 @@ function openGastoAprobarPrompt(id, rol){
   document.getElementById('promptTitle').textContent = 'Marcar aprobado — le toca a: '+rol;
   document.getElementById('promptSub').textContent = '¿Quién está aprobando este gasto?';
   document.getElementById('promptName').value='';
+  document.getElementById('promptFileRow').hidden = true;
+  resetPromptFileField();
   document.getElementById('namePrompt').classList.add('show');
   document.getElementById('promptName').focus();
 }
@@ -1709,6 +1818,8 @@ function openGastoPagarPrompt(id){
   document.getElementById('promptTitle').textContent = 'Marcar pagado y validado — Contadora';
   document.getElementById('promptSub').textContent = '¿Quién de Finanzas confirma el pago y la validación de documentos?';
   document.getElementById('promptName').value='';
+  document.getElementById('promptFileRow').hidden = true;
+  resetPromptFileField();
   document.getElementById('namePrompt').classList.add('show');
   document.getElementById('promptName').focus();
 }
@@ -1732,6 +1843,16 @@ function openComprobarPrompt(id){
   document.getElementById('comprobarTipo').value='fiscal';
   document.getElementById('comprobarRef').value='';
   document.getElementById('comprobarPor').value='';
+  const fileInput = document.getElementById('comprobarFile');
+  const errEl = document.getElementById('comprobarFileError');
+  if(fileInput) fileInput.value = '';
+  if(errEl){ errEl.hidden = true; errEl.textContent = ''; }
+  const hint = document.getElementById('comprobarFileHint');
+  if(hint){
+    hint.textContent = g.archivoPath
+      ? `Ya hay un archivo subido (${g.archivoNombre||'sin nombre'}) — subir uno nuevo lo reemplaza.`
+      : 'PDF, Excel, Word, JPG o PNG · máx. 20 MB.';
+  }
   document.getElementById('comprobarPrompt').classList.add('show');
 }
 document.getElementById('comprobarCancel').addEventListener('click', ()=>{
@@ -1745,6 +1866,28 @@ document.getElementById('comprobarConfirm').addEventListener('click', async ()=>
   const montoIngresado = Math.max(0, parseFloat(document.getElementById('comprobarMonto').value)||0);
   const nuevoMontoComprobado = montoComprobadoPrevio + montoIngresado;
   const completo = nuevoMontoComprobado >= monto - 0.005;
+
+  // El archivo del comprobante es uno solo por gasto (no por abono) — se sube ANTES de escribir
+  // el registro, y si falla el usuario se queda en el modal para reintentar.
+  const fileInput = document.getElementById('comprobarFile');
+  const file = fileInput && fileInput.files && fileInput.files[0];
+  const errEl = document.getElementById('comprobarFileError');
+  errEl.hidden = true; errEl.textContent = '';
+  let archivoPath = g.archivoPath || null, archivoNombre = g.archivoNombre || null;
+  if(file){
+    const v = validateFile(file);
+    if(!v.ok){ errEl.textContent = v.msg; errEl.hidden = false; return; }
+    const btn = document.getElementById('comprobarConfirm');
+    const originalLabel = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Subiendo…';
+    const path = pathGasto(g.cuenta, pendingComprobar, v.ext);
+    const up = await subirArchivo(file, path);
+    btn.disabled = false; btn.textContent = originalLabel;
+    if(!up.ok){ errEl.textContent = up.msg; errEl.hidden = false; return; }
+    archivoPath = path;
+    archivoNombre = file.name;
+  }
+
   const entry = {
     monto: montoIngresado,
     tipo: document.getElementById('comprobarTipo').value,
@@ -1760,6 +1903,7 @@ document.getElementById('comprobarConfirm').addEventListener('click', async ()=>
     comprobanteTipo: entry.tipo,
     comprobanteRef: entry.ref,
   };
+  if(archivoPath){ body.archivoPath = archivoPath; body.archivoNombre = archivoNombre; }
   if(completo){
     body.estado = 'comprobado';
     body.fechaComprobado = new Date().toISOString();

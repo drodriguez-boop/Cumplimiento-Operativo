@@ -342,6 +342,8 @@ details.config[open] summary::before{transform:rotate(90deg);}
     </div>
   </section>
 
+  <div id="pendingMioResumen" style="color:var(--warn);font-size:12px;line-height:1.4;margin:-4px 0 12px;" hidden></div>
+
   <div class="tablewrap">
     <div class="tablewrap-scroll">
       <table>
@@ -729,6 +731,27 @@ function allowedTabsForRole(rol){
   return ['portada','nomina','emetrix','gastos']; // admin, gerente, ejecutivo
 }
 
+// --- Nómina: quién puede hacer cada uno de los dos pasos de confirmación ---
+// KPI1 (entrega a tiempo) lo confirma quien sube el archivo: el gerente/ejecutivo dueño de la
+// cuenta, o admin. KPI2 (cero errores) es un paso aparte que le toca al área de Nómina
+// (rol "nominista", que ve todas las cuentas sin importar gerente) o a admin. Confirmado con
+// el dueño del producto: ya hay cuentas reales por login, así que esto ya no se pregunta por
+// texto libre — se toma de currentUser.
+function puedeConfirmarKpi1(){
+  return !!currentUser && (currentUser.rol==='gerente' || currentUser.rol==='ejecutivo' || currentUser.rol==='admin');
+}
+function puedeConfirmarKpi2(){
+  return !!currentUser && (currentUser.rol==='nominista' || currentUser.rol==='admin');
+}
+function identidadActual(){
+  if(!currentUser) return 'Sin nombre';
+  return currentUser.email ? `${currentUser.nombre} (${currentUser.email})` : currentUser.nombre;
+}
+// Las dos noministas (nomina@... y evelyn@...) deben quedar copiadas siempre que se confirma
+// una entrega de nómina, sin importar de qué cuenta se trate — confirmado con el dueño del
+// producto ("deben estar copiados en todo").
+const NOMINISTA_EMAILS = ['nominas@evolve.com.mx', 'evelyn@evolve.com.mx'];
+
 // --- Conexión a Supabase (reemplaza la función "db" que antes daba Claude Artifact) ---
 // SUPABASE_URL y SUPABASE_ANON_KEY no son secretos: están hechos para vivir en el navegador.
 // Lo que sí protege los datos son las políticas de seguridad (RLS) que se crearon en Supabase.
@@ -947,6 +970,18 @@ function fmtShort(d){
   return `${String(d.getDate()).padStart(2,'0')}-${meses[d.getMonth()]} (${dias[d.getDay()]})`;
 }
 
+// Texto de período legible para el correo a Nómina — obKey trae la fecha de pago embebida
+// (ISO directo en lo quincenal, "sem-"+ISO en lo semanal), así que se reconstruye sin tener
+// que exponer la lista completa de quincenas al handler del modal.
+function periodoParaCorreo(obKey, obLabel){
+  try{
+    const iso = obKey.indexOf('sem-')===0 ? obKey.slice(4) : obKey;
+    const d = new Date(iso);
+    if(!isNaN(d)) return `${obLabel||'Nómina'} · pago ${fmtShort(d)}`;
+  }catch(e){}
+  return obLabel || obKey;
+}
+
 function buildQuincenas(){
   const today = new Date(); today.setHours(0,0,0,0);
   const list=[];
@@ -1085,6 +1120,8 @@ function render(){
   // Paso 1 — por cuenta: calcular su propio score de KPI1 y KPI2 (0..1) juntando todas sus
   // obligaciones (quincenal + semanales si aplica), y armar el detalle visual de cada una.
   const cuentaData = {};
+  let pendingKpi1ParaMi = 0, pendingKpi2ParaMi = 0;
+  const puedeKpi1 = puedeConfirmarKpi1(), puedeKpi2 = puedeConfirmarKpi2();
   CUENTAS.forEach(c=>{
     const obs = obligacionesFor(q, c);
 
@@ -1102,8 +1139,13 @@ function render(){
       } else if(today > ob.limiteEC){
         chip = `<span class="chip bad">✕ venció sin confirmar</span>`;
         eval1++;
-      } else {
+      } else if(puedeKpi1){
+        pendingKpi1ParaMi++;
         chip = `<span class="chip pending">pendiente (vence ${fmtShort(ob.limiteEC)})</span> <button class="action" onclick="openPrompt('${c.id}','${ob.key}','${ob.label}')">Confirmar entrega</button>`;
+      } else {
+        // Nominista (u otro rol sin permiso sobre este paso): lo ve, pero no puede accionarlo —
+        // le toca al gerente/ejecutivo dueño de la cuenta subir el archivo.
+        chip = `<span class="chip pending">pendiente (vence ${fmtShort(ob.limiteEC)})</span> <span class="chip na">le corresponde al gerente/ejecutivo</span>`;
       }
       return `<div class="ob-line">${tag}${chip}</div>`;
     }).join('');
@@ -1120,16 +1162,22 @@ function render(){
           const label = t==='otro' && rec.otroTexto ? rec.otroTexto : (ERROR_LABELS[t]||t);
           return `<span class="err-tag">${label}</span>`;
         }).join('');
-        chip = `<span class="chip bad">✕ con error</span><div class="err-tags">${tags}</div>`;
+        const quien2 = rec.errorConfirmadoPor ? `<div class="confirmado-por">${rec.errorConfirmadoPor}</div>` : '';
+        chip = `<span class="chip bad">✕ con error</span><div class="err-tags">${tags}</div>${quien2}`;
         eval2++;
       } else if(rec.huboError === false){
-        chip = `<span class="chip ok">✓ sin error</span>`;
+        const quien2 = rec.errorConfirmadoPor ? `<div class="confirmado-por">${rec.errorConfirmadoPor}</div>` : '';
+        chip = `<span class="chip ok">✓ sin error</span>${quien2}`;
         eval2++; sinError2++;
-      } else {
+      } else if(puedeKpi2){
+        pendingKpi2ParaMi++;
         chip = `<div class="err-toggle">
           <button class="sel-ok-btn" onclick="setError('${c.id}','${ob.key}',false)">Sin error</button>
           <button class="sel-bad-btn" onclick="openErrorPrompt('${c.id}','${ob.key}','${ob.label}')">Con error</button>
         </div>`;
+      } else {
+        // Gerente/ejecutivo viendo su propia cuenta: este paso ya no es suyo, lo confirma Nómina.
+        chip = `<span class="chip na">esperando confirmación de Nómina</span>`;
       }
       return `<div class="ob-line">${tag}${chip}</div>`;
     }).join('');
@@ -1218,6 +1266,23 @@ function render(){
     kpi2El.textContent = kpi2Pct+'%';
     document.getElementById('kpi2Meta').textContent = `${kpi2EvalGerentes} / ${GERENTES_VIEW.length} gerentes marcados`;
     document.getElementById('kpi2Bar').style.width = kpi2Pct+'%';
+  }
+
+  // Aviso de "qué me toca a mí" — la nominista ve todas las cuentas (currentCuentaFilter le
+  // regresa null), así que sin esto tendría que revisar cuenta por cuenta buscando cuáles ya
+  // pasaron su fecha de pago y siguen sin marcar. La tabla de abajo ya trae el detalle completo;
+  // esto solo suma un contador arriba para no tener que ir a buscarlo.
+  const pendingBanner = document.getElementById('pendingMioResumen');
+  if(pendingBanner){
+    if(puedeKpi2 && pendingKpi2ParaMi>0){
+      pendingBanner.hidden = false;
+      pendingBanner.textContent = `Tienes ${pendingKpi2ParaMi} obligación${pendingKpi2ParaMi>1?'es':''} de nómina (viendo todas las cuentas) esperando tu confirmación de "cero errores".`;
+    } else if(puedeKpi1 && pendingKpi1ParaMi>0){
+      pendingBanner.hidden = false;
+      pendingBanner.textContent = `Tienes ${pendingKpi1ParaMi} entrega${pendingKpi1ParaMi>1?'s':''} de nómina pendiente${pendingKpi1ParaMi>1?'s':''} de confirmar.`;
+    } else {
+      pendingBanner.hidden = true;
+    }
   }
 
   // config panel fields
@@ -1637,22 +1702,41 @@ function resetPromptFileField(){
 function openPrompt(cuenta, obKey, obLabel, tipo){
   pendingConfirm = {cuenta, key:obKey, label:obLabel||'', tipo: tipo||'nomina'};
   const isEmetrix = pendingConfirm.tipo === 'emetrix';
+  const isNomina = pendingConfirm.tipo === 'nomina';
+  if(isNomina && !puedeConfirmarKpi1()) { pendingConfirm=null; return; } // botón no debería mostrarse, pero por si acaso
   document.getElementById('promptTitle').textContent = (isEmetrix ? 'Marcar plan cargado — ' : 'Confirmar entrega — ')+cuenta+(obLabel?' · '+obLabel:'');
-  document.getElementById('promptSub').textContent = isEmetrix
-    ? '¿Quién está cargando el plan de esta cuenta? Se marca como cumplido de inmediato.'
-    : '¿Quién está confirmando esta entrega?';
-  document.getElementById('promptName').value='';
+  const nameInput = document.getElementById('promptName');
+  if(isNomina){
+    // Ya hay cuentas reales por login — se toma la identidad de la sesión en vez de pedirla
+    // por texto libre (antes cualquiera podía escribir cualquier nombre aquí).
+    document.getElementById('promptSub').textContent = `Vas a confirmar esta entrega como ${identidadActual()}.`;
+    nameInput.value = identidadActual();
+    nameInput.hidden = true;
+  } else {
+    document.getElementById('promptSub').textContent = isEmetrix
+      ? '¿Quién está cargando el plan de esta cuenta? Se marca como cumplido de inmediato.'
+      : '¿Quién está confirmando esta entrega?';
+    nameInput.hidden = false;
+    nameInput.value='';
+  }
   document.getElementById('promptFileRow').hidden = false;
   resetPromptFileField();
   document.getElementById('namePrompt').classList.add('show');
-  document.getElementById('promptName').focus();
+  (isNomina ? document.getElementById('promptConfirm') : nameInput).focus();
 }
 document.getElementById('promptCancel').addEventListener('click', ()=>{
   document.getElementById('namePrompt').classList.remove('show'); pendingConfirm=null;
 });
 document.getElementById('promptConfirm').addEventListener('click', async ()=>{
   if(!pendingConfirm || !db) { document.getElementById('namePrompt').classList.remove('show'); return; }
-  const name = document.getElementById('promptName').value.trim() || 'Sin nombre';
+  const isNominaKpi1 = pendingConfirm.tipo === 'nomina';
+  if(isNominaKpi1 && !puedeConfirmarKpi1()){
+    // Defensa extra: el botón que abre este modal ya está oculto para quien no puede hacer
+    // este paso, pero por si el modal quedó abierto de antes (cambio de rol, etc.) no se deja
+    // escribir el registro.
+    document.getElementById('namePrompt').classList.remove('show'); pendingConfirm=null; return;
+  }
+  const name = isNominaKpi1 ? identidadActual() : (document.getElementById('promptName').value.trim() || 'Sin nombre');
 
   if(pendingConfirm.tipo==='gasto_aprobar'){
     document.getElementById('namePrompt').classList.remove('show');
@@ -1711,14 +1795,27 @@ document.getElementById('promptConfirm').addEventListener('click', async ()=>{
     );
     window.open(`mailto:${configEmetrix.abrahamEmail}?subject=${asunto}&body=${cuerpo}`, '_blank');
   }
+  // Mismo patrón que el aviso a Abraham arriba: al confirmar la entrega de nómina (paso 1),
+  // se avisa por correo a las dos noministas — siempre las dos, sin importar la cuenta, porque
+  // deben quedar copiadas en todo (confirmado con el dueño del producto). Les toca a ellas
+  // hacer el segundo paso (KPI2 · cero errores) una vez que pase la fecha de pago.
+  if(isNominaKpi1){
+    const periodoTxt = periodoParaCorreo(pendingConfirm.key, pendingConfirm.label);
+    const asuntoNomina = encodeURIComponent(`Nómina entregada — ${pendingConfirm.cuenta} — ${periodoTxt}`);
+    const cuerpoNomina = encodeURIComponent(
+      `Hola,\n\nSe confirmó la entrega de nómina de la cuenta ${pendingConfirm.cuenta} (${periodoTxt}).\n\nConfirmó: ${name}\nFecha: ${fmtShort(new Date())}${archivoNombre?`\nArchivo adjunto: ${archivoNombre}`:''}\n\nQueda pendiente su confirmación de "cero errores" (KPI2) en cuanto pase la fecha de pago.\n\nSaludos.`
+    );
+    window.open(`mailto:${NOMINISTA_EMAILS.join(',')}?subject=${asuntoNomina}&body=${cuerpoNomina}`, '_blank');
+  }
   pendingConfirm=null;
 });
 
 async function setError(cuenta, quincenaKey, huboError, extra){
   if(!db) return;
+  if(!puedeConfirmarKpi2()) return; // KPI2 (cero errores) lo confirma Nómina (nominista) o admin
   const id = docId(cuenta, quincenaKey);
   const ref = db.collection('cumplimiento').doc(id);
-  const body = Object.assign({huboError}, extra||{});
+  const body = Object.assign({huboError, errorConfirmadoPor: identidadActual(), errorFechaConfirmacion: new Date().toISOString()}, extra||{});
   try{
     if(cumplimientoDocs[id]) await ref.update(body); else await ref.set(Object.assign({cuenta, quincena:quincenaKey}, body));
   }catch(e){ console.error(e); }
@@ -1726,6 +1823,7 @@ async function setError(cuenta, quincenaKey, huboError, extra){
 
 let pendingError = null;
 function openErrorPrompt(cuenta, obKey, obLabel){
+  if(!puedeConfirmarKpi2()) return; // mismo permiso que "Sin error" — solo Nómina/admin
   pendingError = {cuenta, quincenaKey:obKey};
   document.getElementById('errorPromptTitle').textContent = 'Registrar error — '+cuenta+(obLabel?' · '+obLabel:'');
   document.getElementById('errorTypesList').innerHTML = ERROR_TYPES.map(t=>`
@@ -1854,6 +1952,7 @@ function openGastoAprobarPrompt(id, rol){
   pendingConfirm = {cuenta:'', key:id, tipo:'gasto_aprobar'};
   document.getElementById('promptTitle').textContent = 'Marcar aprobado — le toca a: '+rol;
   document.getElementById('promptSub').textContent = '¿Quién está aprobando este gasto?';
+  document.getElementById('promptName').hidden = false; // el flujo de nómina puede haber dejado este campo oculto
   document.getElementById('promptName').value='';
   document.getElementById('promptFileRow').hidden = true;
   resetPromptFileField();
@@ -1864,6 +1963,7 @@ function openGastoPagarPrompt(id){
   pendingConfirm = {cuenta:'', key:id, tipo:'gasto_pagar'};
   document.getElementById('promptTitle').textContent = 'Marcar pagado y validado — Contadora';
   document.getElementById('promptSub').textContent = '¿Quién de Finanzas confirma el pago y la validación de documentos?';
+  document.getElementById('promptName').hidden = false; // el flujo de nómina puede haber dejado este campo oculto
   document.getElementById('promptName').value='';
   document.getElementById('promptFileRow').hidden = true;
   resetPromptFileField();

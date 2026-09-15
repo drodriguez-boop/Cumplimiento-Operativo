@@ -184,6 +184,10 @@ details.config[open] summary::before{transform:rotate(90deg);}
 
 .logo-header{width:34px;height:34px;border-radius:8px;flex-shrink:0;}
 .header-title{display:flex;align-items:center;gap:12px;}
+.head-right-wrap{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+.head-user{display:flex;align-items:center;gap:10px;}
+.head-user-name{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);white-space:nowrap;}
+.login-error{color:var(--critical);font-size:12.5px;margin:-6px 0 14px;}
 
 .portada-hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px 20px 30px;}
 .portada-hero img{width:76px;height:76px;border-radius:18px;margin-bottom:16px;box-shadow:0 6px 20px rgba(20,23,26,.12);}
@@ -225,7 +229,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" id="appRoot" hidden>
 
   <header>
     <div class="header-title">
@@ -235,17 +239,23 @@ details.config[open] summary::before{transform:rotate(90deg);}
         <h1>Cumplimiento Operativo</h1>
       </div>
     </div>
-    <div class="head-right" id="headRightNomina" hidden>
-      <select id="quincenaSelect"></select>
-      <button class="icon-btn" id="toggleConfig" type="button">Configuración</button>
-    </div>
-    <div class="head-right" id="headRightEmetrix" hidden>
-      <select id="mesSelect"></select>
-      <button class="icon-btn" id="toggleConfigEmetrix" type="button">Configuración</button>
-    </div>
-    <div class="head-right" id="headRightGastos" hidden>
-      <select id="mesGastosSelect"></select>
-      <button class="icon-btn" id="toggleConfigGastos" type="button">Configuración</button>
+    <div class="head-right-wrap">
+      <div class="head-user" id="headUser" hidden>
+        <span class="head-user-name" id="headUserName"></span>
+        <button class="icon-btn" id="logoutBtn" type="button">Cerrar sesión</button>
+      </div>
+      <div class="head-right" id="headRightNomina" hidden>
+        <select id="quincenaSelect"></select>
+        <button class="icon-btn" id="toggleConfig" type="button">Configuración</button>
+      </div>
+      <div class="head-right" id="headRightEmetrix" hidden>
+        <select id="mesSelect"></select>
+        <button class="icon-btn" id="toggleConfigEmetrix" type="button">Configuración</button>
+      </div>
+      <div class="head-right" id="headRightGastos" hidden>
+        <select id="mesGastosSelect"></select>
+        <button class="icon-btn" id="toggleConfigGastos" type="button">Configuración</button>
+      </div>
     </div>
   </header>
 
@@ -483,6 +493,8 @@ details.config[open] summary::before{transform:rotate(90deg);}
 
   </div>
 
+</div><!-- /#appRoot -->
+
 <div class="name-prompt" id="namePrompt">
   <div class="name-card">
     <h3 id="promptTitle">Confirmar entrega</h3>
@@ -581,6 +593,37 @@ details.config[open] summary::before{transform:rotate(90deg);}
   </div>
 </div>
 
+<div class="name-prompt show" id="loginScreen">
+  <div class="name-card" style="width:340px;">
+    <h3>Cumplimiento Operativo</h3>
+    <p>Inicia sesión con tu correo de Evolve.</p>
+    <form id="loginForm">
+      <div class="field">
+        <label>Correo</label>
+        <input type="email" id="loginEmail" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input type="password" id="loginPassword" autocomplete="current-password" required>
+      </div>
+      <p class="login-error" id="loginError" hidden></p>
+      <div class="row">
+        <button class="confirm" id="loginSubmit" type="submit" style="width:100%;">Entrar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="name-prompt show" id="noProfileScreen" hidden>
+  <div class="name-card" style="width:340px;">
+    <h3>Cuenta sin rol asignado</h3>
+    <p>Tu cuenta no tiene un rol asignado todavía. Contacta a Deisa Rodríguez (d.rodriguez@evolve.com.mx) para que lo revise.</p>
+    <div class="row">
+      <button class="cancel" id="noProfileSignOut" type="button" style="width:100%;">Cerrar sesión</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const ERROR_TYPES = ['dias_pago','bono','colaborador_no_considerado','complemento','otro'];
 const ERROR_LABELS = {
@@ -590,7 +633,7 @@ const ERROR_LABELS = {
   complemento: 'Requirió complemento de nómina',
   otro: 'Otro',
 };
-const CUENTA_IDS = ['ADM','Bepensa','Gifan','Spinmaster','Multimarca','Ajemex','Ruz','Hanes','Zuru','Hispana','Delonghi','Comercial','Piquio','Juguetimax'];
+const CUENTA_IDS = ['ADM','Bepensa','Gifan','Spinmaster','Multimarca','Ajemex','Ruz','Hanes','Zuru','Hispana','Delonghi','Comercial','Piquio','Juguetimax','Disney'];
 // semanal: 'siempre' = además de su nómina quincenal, esta cuenta tiene un grupo de gente que se
 //   paga cada semana (jueves) — hoy solo ADM. 'temporada' = igual, pero el proceso semanal solo
 //   corre cuando el proyecto que lo activa está vivo, y eso se prende/apaga a mano abajo en
@@ -616,10 +659,57 @@ const GERENTES = Object.keys(GERENTE_MAP)
   .map(nombre => ({nombre, cuentas: GERENTE_MAP[nombre]}))
   .sort((a,b) => a.nombre.localeCompare(b.nombre, 'es'));
 
+// Cuentas que no tienen gerente asignado (reportan directo) — hoy solo Disney, que Alan Obregón
+// (ejecutivo) atiende día a día pero sin gerente formal encima. Se muestran en una sección aparte
+// en cada pestaña, y participan en los KPI igual que un "gerente" más para efectos de peso.
+const UNGROUPED_CUENTA_IDS = CUENTA_IDS.filter(id => !GERENTES.some(g => g.cuentas.includes(id)));
+
 let config = {diasEC:3, diasNomina:2, cuentaEsp:'', diasEsp:2, temporada:{Multimarca:false, Spinmaster:false}};
 let cumplimientoDocs = {}; // id -> data
 let selectedQuincena = null;
 let db = null;
+
+// --- Sesión / roles ---
+// currentUser = {id, email, nombre, rol, cuentas} una vez que el login y el perfil (tabla
+// "perfiles" en Supabase) ya cargaron. Mientras no haya currentUser no se debe pintar ni pedir
+// datos de negocio — ver showLoginScreen()/showApp()/init() más abajo.
+const ROL_LABELS = { gerente:'Gerente', ejecutivo:'Ejecutivo', contadora:'Contadora', nominista:'Nominista', admin:'Administrador' };
+let currentUser = null;
+let supaClient = null;
+let appStarted = false;
+let authInFlightUserId = null;
+let dataUnsubscribers = [];
+
+// null = sin restricción de cuentas (ve todas); array = solo puede ver esas cuentas.
+function currentCuentaFilter(){
+  if(!currentUser) return [];
+  if(currentUser.rol === 'admin' || currentUser.rol === 'contadora' || currentUser.rol === 'nominista') return null;
+  return Array.isArray(currentUser.cuentas) ? currentUser.cuentas : [];
+}
+function visibleCuentaIds(){
+  const filter = currentCuentaFilter();
+  return filter===null ? CUENTA_IDS.slice() : CUENTA_IDS.filter(id=>filter.includes(id));
+}
+// Igual que GERENTES, pero filtrado a lo que puede ver currentUser (gerente/ejecutivo ven solo
+// sus propias cuentas, incluso si son un subconjunto de las de su gerente), más un grupo extra
+// "sin gerente" cuando aplica y el usuario puede ver al menos una de esas cuentas.
+function visibleGerentes(){
+  const filter = currentCuentaFilter();
+  const groups = GERENTES.map(g=>{
+    const cuentas = filter===null ? g.cuentas.slice() : g.cuentas.filter(c=>filter.includes(c));
+    return {nombre:g.nombre, cuentas};
+  }).filter(g=>g.cuentas.length>0);
+  const ungrouped = filter===null ? UNGROUPED_CUENTA_IDS.slice() : UNGROUPED_CUENTA_IDS.filter(c=>filter.includes(c));
+  if(ungrouped.length){
+    groups.push({nombre:'Cuentas sin gerente', cuentas: ungrouped});
+  }
+  return groups;
+}
+function allowedTabsForRole(rol){
+  if(rol==='contadora') return ['gastos'];
+  if(rol==='nominista') return ['nomina'];
+  return ['portada','nomina','emetrix','gastos']; // admin, gerente, ejecutivo
+}
 
 // --- Conexión a Supabase (reemplaza la función "db" que antes daba Claude Artifact) ---
 // SUPABASE_URL y SUPABASE_ANON_KEY no son secretos: están hechos para vivir en el navegador.
@@ -638,9 +728,7 @@ const SUPABASE_TABLES = {
 // Imita la forma en que el resto del código ya usa "db" (collection/doc/set/update/onSnapshot),
 // que es el mismo patrón que usaba la base de datos de Claude Artifact — así el resto del archivo
 // no tuvo que reescribirse. Cada "documento" es una fila con id + una columna jsonb "data".
-function createSupabaseDb(url, anonKey){
-  const client = window.supabase.createClient(url, anonKey);
-
+function createSupabaseDb(client){
   function docRef(table, id){
     return {
       async set(data){
@@ -861,6 +949,7 @@ function buildMesesGastos(){
 
 function render(){
   const today = new Date(); today.setHours(0,0,0,0);
+  const GERENTES_VIEW = visibleGerentes();
   const quincenas = buildQuincenas();
 
   const sel = document.getElementById('quincenaSelect');
@@ -938,11 +1027,11 @@ function render(){
 
   // Paso 2 — por gerente: promedio simple de sus cuentas evaluadas (confirmado contigo: peso
   // igual entre gerentes, sin importar cuántas cuentas traiga cada quien).
-  const pesoGerente = 100/GERENTES.length;
+  const pesoGerente = 100/GERENTES_VIEW.length;
   let kpi1Sum=0, kpi1EvalGerentes=0;
   let kpi2Sum=0, kpi2EvalGerentes=0;
 
-  const gerenteBlocks = GERENTES.map(g=>{
+  const gerenteBlocks = GERENTES_VIEW.map(g=>{
     const scores1 = g.cuentas.map(cid=>cuentaData[cid].score1).filter(s=>s!==null);
     const scores2 = g.cuentas.map(cid=>cuentaData[cid].score2).filter(s=>s!==null);
     const gScore1 = scores1.length ? scores1.reduce((a,b)=>a+b,0)/scores1.length : null;
@@ -989,9 +1078,9 @@ function render(){
     kpi1El.classList.add('na');
     document.getElementById('kpi1Bar').style.width = '0%';
   }
-  document.getElementById('kpi1Meta').textContent = `${kpi1EvalGerentes} / ${GERENTES.length} gerentes evaluados`;
-  document.getElementById('kpi1Total').textContent = GERENTES.length;
-  document.getElementById('kpi2Total').textContent = GERENTES.length;
+  document.getElementById('kpi1Meta').textContent = `${kpi1EvalGerentes} / ${GERENTES_VIEW.length} gerentes evaluados`;
+  document.getElementById('kpi1Total').textContent = GERENTES_VIEW.length;
+  document.getElementById('kpi2Total').textContent = GERENTES_VIEW.length;
 
   // KPI 2 tile — se activa obligación por obligación según su propia fecha de pago (una
   // cuenta con semanal activo puede ya tener errores evaluables aunque su parte quincenal
@@ -1006,7 +1095,7 @@ function render(){
   } else {
     const kpi2Pct = Math.round((kpi2Sum/kpi2EvalGerentes)*100);
     kpi2El.textContent = kpi2Pct+'%';
-    document.getElementById('kpi2Meta').textContent = `${kpi2EvalGerentes} / ${GERENTES.length} gerentes marcados`;
+    document.getElementById('kpi2Meta').textContent = `${kpi2EvalGerentes} / ${GERENTES_VIEW.length} gerentes marcados`;
     document.getElementById('kpi2Bar').style.width = kpi2Pct+'%';
   }
 
@@ -1022,6 +1111,7 @@ function render(){
 
 function renderEmetrix(){
   const today = new Date(); today.setHours(0,0,0,0);
+  const GERENTES_VIEW = visibleGerentes();
   const meses = buildMeses();
 
   const sel = document.getElementById('mesSelect');
@@ -1051,9 +1141,9 @@ function renderEmetrix(){
     cuentaData[c.id] = {chip, score};
   });
 
-  const pesoGerente = 100/GERENTES.length;
+  const pesoGerente = 100/GERENTES_VIEW.length;
   let kpiSum=0, kpiEvalGerentes=0;
-  const gerenteBlocks = GERENTES.map(g=>{
+  const gerenteBlocks = GERENTES_VIEW.map(g=>{
     const scores = g.cuentas.map(cid=>cuentaData[cid].score).filter(s=>s!==null);
     const gScore = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : null;
     if(gScore!==null){ kpiSum+=gScore; kpiEvalGerentes++; }
@@ -1086,8 +1176,8 @@ function renderEmetrix(){
     kpi3El.classList.add('na');
     document.getElementById('kpi3Bar').style.width = '0%';
   }
-  document.getElementById('kpi3Meta').textContent = `${kpiEvalGerentes} / ${GERENTES.length} gerentes evaluados`;
-  document.getElementById('kpi3Total').textContent = GERENTES.length;
+  document.getElementById('kpi3Meta').textContent = `${kpiEvalGerentes} / ${GERENTES_VIEW.length} gerentes evaluados`;
+  document.getElementById('kpi3Total').textContent = GERENTES_VIEW.length;
 
   document.getElementById('cfgDiasEmetrix').value = configEmetrix.diasEmetrix;
   document.getElementById('cfgAbrahamEmail').value = configEmetrix.abrahamEmail || '';
@@ -1097,6 +1187,7 @@ function fmtMoney(n){ return '$'+(Number(n)||0).toLocaleString('es-MX',{minimumF
 
 function renderGastos(){
   const today = new Date(); today.setHours(0,0,0,0);
+  const GERENTES_VIEW = visibleGerentes();
   const meses = buildMesesGastos();
 
   const sel = document.getElementById('mesGastosSelect');
@@ -1123,7 +1214,7 @@ function renderGastos(){
   {
     const diasParaCierre = Math.ceil((per.cierre - today) / 86400000);
     const pendientesPorGerente = {};
-    GERENTES.forEach(ger=>{
+    GERENTES_VIEW.forEach(ger=>{
       let monto = 0, count = 0;
       ger.cuentas.forEach(cid=>{
         (porCuenta[cid]||[]).forEach(gto=>{
@@ -1243,9 +1334,9 @@ function renderGastos(){
     }).join('');
   });
 
-  const pesoGerente = 100/GERENTES.length;
+  const pesoGerente = 100/GERENTES_VIEW.length;
   let kpiSum=0, kpiEvalGerentes=0;
-  const gerenteBlocks = GERENTES.map(g=>{
+  const gerenteBlocks = GERENTES_VIEW.map(g=>{
     const scores = g.cuentas.map(cid=>cuentaScores[cid]).filter(s=>s!==null);
     const gScore = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : null;
     if(gScore!==null){ kpiSum+=gScore; kpiEvalGerentes++; }
@@ -1280,8 +1371,8 @@ function renderGastos(){
     kpi4El.classList.add('na');
     document.getElementById('kpi4Bar').style.width = '0%';
   }
-  document.getElementById('kpi4Meta').textContent = `${kpiEvalGerentes} / ${GERENTES.length} gerentes evaluados`;
-  document.getElementById('kpi4Total').textContent = GERENTES.length;
+  document.getElementById('kpi4Meta').textContent = `${kpiEvalGerentes} / ${GERENTES_VIEW.length} gerentes evaluados`;
+  document.getElementById('kpi4Total').textContent = GERENTES_VIEW.length;
 
   updateGastoLockUI();
 }
@@ -1369,7 +1460,8 @@ function togglePortadaCard(nombre){
 
 function renderPortada(){
   const cont = document.getElementById('portadaGerentes');
-  const filas = GERENTES.map(g=>{
+  const GERENTES_VIEW = visibleGerentes();
+  const filas = GERENTES_VIEW.map(g=>{
     const scoresObj = gerenteKpiScores[g.nombre] || {};
     const okrScore = computeOkrScore(scoresObj);
     const expanded = !!portadaExpandido[g.nombre];
@@ -1553,7 +1645,7 @@ document.getElementById('toggleConfigGastos').addEventListener('click', ()=>{
 });
 
 document.getElementById('openGastoPrompt').addEventListener('click', ()=>{
-  document.getElementById('gastoCuenta').innerHTML = CUENTAS.map(c=>`<option value="${c.id}">${c.id}</option>`).join('');
+  document.getElementById('gastoCuenta').innerHTML = visibleCuentaIds().map(id=>`<option value="${id}">${id}</option>`).join('');
   document.getElementById('gastoTipo').innerHTML = GASTO_TIPOS.map(t=>`<option value="${t}">${GASTO_TIPO_LABELS[t]}</option>`).join('');
   document.getElementById('gastoMonto').value='';
   document.getElementById('gastoDescripcion').value='';
@@ -1699,14 +1791,58 @@ document.getElementById('saveConfig').addEventListener('click', async ()=>{
   }
 });
 
-async function init(){
-  renderAll();
-  try{
-    db = createSupabaseDb(SUPABASE_URL, SUPABASE_ANON_KEY);
-  }catch(e){ console.error(e); db = null; }
-  if(!db){ return; }
+// --- Login / sesión ---
+function showLoginScreen(errorMsg){
+  document.getElementById('appRoot').hidden = true;
+  document.getElementById('noProfileScreen').hidden = true;
+  document.getElementById('loginScreen').hidden = false;
+  const errEl = document.getElementById('loginError');
+  if(errorMsg){ errEl.textContent = errorMsg; errEl.hidden = false; }
+  else { errEl.hidden = true; errEl.textContent = ''; }
+  const pw = document.getElementById('loginPassword');
+  if(pw) pw.value = '';
+}
+function showNoProfileScreen(){
+  document.getElementById('loginScreen').hidden = true;
+  document.getElementById('appRoot').hidden = true;
+  document.getElementById('noProfileScreen').hidden = false;
+}
+function showApp(){
+  document.getElementById('loginScreen').hidden = true;
+  document.getElementById('noProfileScreen').hidden = true;
+  document.getElementById('appRoot').hidden = false;
+}
+function renderUserHeader(){
+  const wrap = document.getElementById('headUser');
+  const nameEl = document.getElementById('headUserName');
+  if(!wrap || !nameEl) return;
+  if(!currentUser){ wrap.hidden = true; return; }
+  nameEl.textContent = `${currentUser.nombre} · ${ROL_LABELS[currentUser.rol] || currentUser.rol}`;
+  wrap.hidden = false;
+}
+function applyRoleTabGating(){
+  const allowed = allowedTabsForRole(currentUser ? currentUser.rol : null);
+  const tabIds = {portada:'tabBtnPortada', nomina:'tabBtnNomina', emetrix:'tabBtnEmetrix', gastos:'tabBtnGastos'};
+  Object.keys(tabIds).forEach(tab=>{
+    document.getElementById(tabIds[tab]).hidden = !allowed.includes(tab);
+  });
+  const tabs = ['portada','nomina','emetrix','gastos'];
+  const current = tabs.find(t=>document.getElementById(tabIds[t]).classList.contains('active'));
+  if(!allowed.includes(current)){
+    switchTab(allowed[0]);
+  }
+}
+function stopDataSync(){
+  dataUnsubscribers.forEach(fn=>{ try{ fn && fn(); }catch(e){ console.error(e); } });
+  dataUnsubscribers = [];
+  cumplimientoDocs = {};
+  cumplimientoEmetrixDocs = {};
+  gastosDocs = {};
+}
+function startDataSync(){
+  db = createSupabaseDb(supaClient);
 
-  db.doc('config/calendario').onSnapshot(snap=>{
+  dataUnsubscribers.push(db.doc('config/calendario').onSnapshot(snap=>{
     if(snap.exists){
       const d = snap.data();
       config = {
@@ -1721,36 +1857,144 @@ async function init(){
       };
       render();
     }
-  }, err=>console.error(err));
+  }, err=>console.error(err)));
 
-  db.collection('cumplimiento').onSnapshot(snap=>{
+  dataUnsubscribers.push(db.collection('cumplimiento').onSnapshot(snap=>{
     const map={};
     snap.docs.forEach(d=>{ map[d.id]=d.data(); });
     cumplimientoDocs = map;
     render();
-  }, err=>console.error(err));
+  }, err=>console.error(err)));
 
-  db.doc('config/emetrix').onSnapshot(snap=>{
+  dataUnsubscribers.push(db.doc('config/emetrix').onSnapshot(snap=>{
     if(snap.exists){
       const d = snap.data();
       configEmetrix = { diasEmetrix: d.diasEmetrix ?? 4, abrahamEmail: d.abrahamEmail ?? '' };
       renderEmetrix();
     }
-  }, err=>console.error(err));
+  }, err=>console.error(err)));
 
-  db.collection('cumplimientoEmetrix').onSnapshot(snap=>{
+  dataUnsubscribers.push(db.collection('cumplimientoEmetrix').onSnapshot(snap=>{
     const map={};
     snap.docs.forEach(d=>{ map[d.id]=d.data(); });
     cumplimientoEmetrixDocs = map;
     renderEmetrix();
-  }, err=>console.error(err));
+  }, err=>console.error(err)));
 
-  db.collection('gastos').onSnapshot(snap=>{
+  dataUnsubscribers.push(db.collection('gastos').onSnapshot(snap=>{
     const map={};
     snap.docs.forEach(d=>{ map[d.id]=d.data(); });
     gastosDocs = map;
     renderGastos();
-  }, err=>console.error(err));
+  }, err=>console.error(err)));
+
+  renderAll();
+}
+
+async function handleAuthenticated(session){
+  const user = session && session.user;
+  if(!user) return;
+  if(appStarted && currentUser && currentUser.id === user.id) return; // ya cargado
+  if(authInFlightUserId === user.id) return; // ya en proceso (evita relecturas duplicadas)
+  authInFlightUserId = user.id;
+  try{
+    let perfil;
+    try{
+      const { data, error } = await supaClient.from('perfiles').select('*').eq('id', user.id).maybeSingle();
+      if(error) throw error;
+      perfil = data;
+    }catch(e){
+      console.error(e);
+      showLoginScreen('No se pudo verificar tu cuenta. Intenta de nuevo.');
+      return;
+    }
+    if(!perfil){
+      showNoProfileScreen();
+      return;
+    }
+    currentUser = {
+      id: user.id,
+      email: perfil.email || user.email || '',
+      nombre: perfil.nombre || perfil.email || user.email || 'Usuario',
+      rol: perfil.rol,
+      cuentas: Array.isArray(perfil.cuentas) ? perfil.cuentas : [],
+    };
+    renderUserHeader();
+    applyRoleTabGating();
+    showApp();
+    if(!appStarted){
+      appStarted = true;
+      startDataSync();
+    } else {
+      renderAll();
+    }
+  } finally {
+    authInFlightUserId = null;
+  }
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginSubmit');
+  const errEl = document.getElementById('loginError');
+  errEl.hidden = true;
+  btn.disabled = true;
+  try{
+    const { error } = await supaClient.auth.signInWithPassword({ email, password });
+    if(error){
+      errEl.textContent = 'Correo o contraseña incorrectos.';
+      errEl.hidden = false;
+    }
+    // si sale bien, onAuthStateChange se encarga de cargar el perfil y mostrar la app.
+  }catch(err){
+    console.error(err);
+    errEl.textContent = 'Ocurrió un error al conectar. Intenta de nuevo.';
+    errEl.hidden = false;
+  }
+  btn.disabled = false;
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async ()=>{
+  try{ await supaClient.auth.signOut(); }catch(e){ console.error(e); }
+});
+document.getElementById('noProfileSignOut').addEventListener('click', async ()=>{
+  try{ await supaClient.auth.signOut(); }catch(e){ console.error(e); }
+});
+
+async function init(){
+  try{
+    supaClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }catch(e){
+    console.error(e);
+    showLoginScreen('No se pudo conectar con el servidor. Recarga la página.');
+    return;
+  }
+
+  supaClient.auth.onAuthStateChange((event, session)=>{
+    if(event === 'SIGNED_OUT'){
+      stopDataSync();
+      currentUser = null;
+      appStarted = false;
+      showLoginScreen();
+    } else if(session && session.user){
+      handleAuthenticated(session);
+    }
+  });
+
+  try{
+    const { data, error } = await supaClient.auth.getSession();
+    if(error) throw error;
+    if(data && data.session){
+      await handleAuthenticated(data.session);
+    } else {
+      showLoginScreen();
+    }
+  }catch(e){
+    console.error(e);
+    showLoginScreen();
+  }
 }
 init();
 </script>

@@ -577,7 +577,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
 <div class="name-prompt" id="comprobarPrompt">
   <div class="name-card">
     <h3 id="comprobarPromptTitle">Marcar comprobado</h3>
-    <p>Registra el tipo de comprobante, una referencia y, si quieres, el archivo real. Si el gasto se comprueba en varias partes, puedes registrar cada abono por separado — el archivo adjunto es uno solo por gasto (subir uno nuevo reemplaza al anterior).</p>
+    <p>Registra el tipo de comprobante, una referencia y, si quieres, el archivo real. Si el gasto se comprueba en varias partes, puedes registrar cada abono por separado — para un CFDI puedes adjuntar varios archivos a la vez (por ejemplo el XML y el PDF); volver a subir archivos para este gasto reemplaza al conjunto anterior.</p>
     <p class="field-hint" id="comprobarResumen" style="font-family:var(--font-mono);font-size:11.5px;color:var(--muted);margin:-6px 0 14px;"></p>
     <div class="field">
       <label>Monto que estás comprobando ahora</label>
@@ -599,9 +599,9 @@ details.config[open] summary::before{transform:rotate(90deg);}
       <input type="text" id="comprobarPor" placeholder="Quién lo confirma">
     </div>
     <div class="field">
-      <label>Archivo del comprobante (opcional)</label>
-      <input type="file" id="comprobarFile" accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png">
-      <div class="file-hint" id="comprobarFileHint">PDF, Excel, Word, JPG o PNG · máx. 20 MB. Si ya había un archivo para este gasto, este lo reemplaza.</div>
+      <label>Archivo(s) del comprobante (opcional)</label>
+      <input type="file" id="comprobarFile" accept=".pdf,.xml,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png" multiple>
+      <div class="file-hint" id="comprobarFileHint">PDF, XML (CFDI), Excel, Word, JPG o PNG · máx. 20 MB por archivo · hasta 5 archivos (por ejemplo XML + PDF de un CFDI). Si ya había archivos para este gasto, este conjunto los reemplaza.</div>
       <p class="file-error" id="comprobarFileError" hidden></p>
     </div>
     <div class="row">
@@ -814,6 +814,9 @@ function createSupabaseDb(client){
 const STORAGE_BUCKET = 'adjuntos-cumplimiento';
 const ACCEPTED_EXTS = ['pdf','xlsx','xls','doc','docx','jpg','jpeg','png'];
 const MAX_FILE_BYTES = 20*1024*1024;
+// Un CFDI mexicano son en realidad DOS archivos (XML + PDF), no uno — el comprobante de un
+// gasto acepta varios archivos (hasta MAX_GASTO_FILES) en vez de uno solo.
+const MAX_GASTO_FILES = 5;
 
 function extOf(filename){
   const m = /\.([a-zA-Z0-9]+)$/.exec(filename||'');
@@ -829,9 +832,36 @@ function validateFile(file){
   }
   return {ok:true, ext};
 }
+// Gastos acepta, además, .xml — un CFDI mexicano en realidad son DOS archivos (el XML, que es el
+// comprobante fiscal en sí, y el PDF de representación impresa), así que el comprobante de un
+// gasto necesita poder recibir XML aunque nómina/plan de trabajo (validateFile de arriba) no.
+const ACCEPTED_EXTS_GASTO = ACCEPTED_EXTS.concat(['xml']);
+function validateFileGasto(file){
+  const ext = extOf(file.name);
+  if(!ACCEPTED_EXTS_GASTO.includes(ext)){
+    return {ok:false, msg:'Tipo de archivo no permitido. Usa PDF, XML (CFDI), Excel (.xlsx/.xls), Word (.doc/.docx), JPG o PNG.'};
+  }
+  if(file.size > MAX_FILE_BYTES){
+    return {ok:false, msg:'El archivo pesa más de 20 MB, intenta con uno más ligero.'};
+  }
+  return {ok:true, ext};
+}
 function pathNomina(cuentaId, obKey, ext){ return `nomina/${cuentaId}/${obKey}.${ext}`; }
 function pathPlan(cuentaId, mesKey, ext){ return `plan/${cuentaId}/${mesKey}.${ext}`; }
-function pathGasto(cuentaId, gastoId, ext){ return `gastos/${cuentaId}/${gastoId}.${ext}`; }
+// Gastos: un comprobante puede traer varios archivos (típico CFDI = XML + PDF), así que la ruta
+// ya no es una sola por gasto — es una por archivo, indexada por orden de subida (0, 1, 2…) y
+// siempre con upsert:true, para que volver a comprobar el mismo gasto con el mismo número de
+// archivos en el mismo orden reemplace limpiamente cada uno.
+function pathGasto(cuentaId, gastoId, index, ext){ return `gastos/${cuentaId}/${gastoId}/${index}.${ext}`; }
+// Normaliza el campo de archivos de un gasto a un arreglo [{path, nombre}], sea cual sea su forma:
+// el nuevo esquema `archivos: [...]`, o el esquema anterior de un solo archivo
+// (`archivoPath`/`archivoNombre`) que ya existe en registros guardados antes de este cambio.
+function archivosOf(g){
+  if(!g) return [];
+  if(Array.isArray(g.archivos) && g.archivos.length) return g.archivos;
+  if(g.archivoPath) return [{path: g.archivoPath, nombre: g.archivoNombre || null}];
+  return [];
+}
 async function subirArchivo(file, path){
   try{
     const { error } = await supaClient.storage.from(STORAGE_BUCKET).upload(path, file, { upsert:true, contentType: file.type || undefined });
@@ -861,6 +891,23 @@ async function verArchivo(path, btn){
 function archivoBtnHtml(path){
   if(!path) return '';
   return `<button type="button" class="archivo-btn" onclick="verArchivo('${path}', this)">Ver archivo</button>`;
+}
+// Gastos: uno o varios archivos por comprobante (XML + PDF de un CFDI, por ejemplo) — un botón
+// "Ver archivo" por archivo, con el nombre original como texto del enlace cuando se conoce.
+function gastoArchivosHtml(g){
+  const archivos = archivosOf(g);
+  if(!archivos.length) return '';
+  return archivos.map((a, i)=>{
+    if(!a || !a.path) return '';
+    const label = a.nombre ? a.nombre : (archivos.length>1 ? `archivo ${i+1}` : 'archivo');
+    return `<button type="button" class="archivo-btn" onclick="verArchivo('${a.path}', this)">Ver ${label}</button>`;
+  }).join('');
+}
+async function borrarArchivosStorage(paths){
+  const list = (paths||[]).filter(Boolean);
+  if(!list.length) return;
+  try{ await supaClient.storage.from(STORAGE_BUCKET).remove(list); }
+  catch(e){ console.error('No se pudieron limpiar archivos viejos de storage', e); }
 }
 
 // --- KPI 3 · Emetrix ---
@@ -1403,7 +1450,7 @@ function renderGastos(){
         <div class="status-pipe">${pips}</div>
         ${historial}
         ${comprobantesHtml}
-        <div class="gasto-actions">${accion}${archivoBtnHtml(g.archivoPath)}${resultado}</div>
+        <div class="gasto-actions">${accion}${gastoArchivosHtml(g)}${resultado}</div>
       </div>`;
     }).join('');
   });
@@ -1849,9 +1896,10 @@ function openComprobarPrompt(id){
   if(errEl){ errEl.hidden = true; errEl.textContent = ''; }
   const hint = document.getElementById('comprobarFileHint');
   if(hint){
-    hint.textContent = g.archivoPath
-      ? `Ya hay un archivo subido (${g.archivoNombre||'sin nombre'}) — subir uno nuevo lo reemplaza.`
-      : 'PDF, Excel, Word, JPG o PNG · máx. 20 MB.';
+    const archivosPrevios = archivosOf(g);
+    hint.textContent = archivosPrevios.length
+      ? `Ya hay ${archivosPrevios.length} archivo${archivosPrevios.length>1?'s':''} subido${archivosPrevios.length>1?'s':''} (${archivosPrevios.map(a=>a.nombre||'sin nombre').join(', ')}) — subir archivos nuevos reemplaza este conjunto.`
+      : `PDF, Excel, Word, JPG o PNG · máx. 20 MB por archivo · hasta ${MAX_GASTO_FILES} archivos.`;
   }
   document.getElementById('comprobarPrompt').classList.add('show');
 }
@@ -1867,25 +1915,60 @@ document.getElementById('comprobarConfirm').addEventListener('click', async ()=>
   const nuevoMontoComprobado = montoComprobadoPrevio + montoIngresado;
   const completo = nuevoMontoComprobado >= monto - 0.005;
 
-  // El archivo del comprobante es uno solo por gasto (no por abono) — se sube ANTES de escribir
-  // el registro, y si falla el usuario se queda en el modal para reintentar.
+  // Los archivos del comprobante son por gasto (no por abono), y ahora pueden ser varios a la vez
+  // (típico CFDI = XML + PDF) — se validan y suben TODOS antes de escribir el registro, y si algo
+  // falla el usuario se queda en el modal para reintentar sin perder lo ya escrito. Volver a
+  // subir archivos para este gasto reemplaza el conjunto anterior completo.
   const fileInput = document.getElementById('comprobarFile');
-  const file = fileInput && fileInput.files && fileInput.files[0];
+  const files = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
   const errEl = document.getElementById('comprobarFileError');
   errEl.hidden = true; errEl.textContent = '';
-  let archivoPath = g.archivoPath || null, archivoNombre = g.archivoNombre || null;
-  if(file){
-    const v = validateFile(file);
-    if(!v.ok){ errEl.textContent = v.msg; errEl.hidden = false; return; }
+  const archivosPrevios = archivosOf(g);
+  let archivos = archivosPrevios;
+  if(files.length){
+    if(files.length > MAX_GASTO_FILES){
+      errEl.textContent = `Puedes adjuntar hasta ${MAX_GASTO_FILES} archivos por comprobante (elegiste ${files.length}).`;
+      errEl.hidden = false;
+      fileInput.value = '';
+      return;
+    }
+    // Validar cada archivo por separado — si uno solo es inválido se rechaza toda la selección
+    // (nombrando cuál fue), sin dejar el campo bloqueado: se limpia para que se puedan volver a
+    // elegir los archivos válidos (y corregir el que falló).
+    for(const f of files){
+      const v = validateFileGasto(f);
+      if(!v.ok){
+        errEl.textContent = `"${f.name}": ${v.msg}`;
+        errEl.hidden = false;
+        fileInput.value = '';
+        return;
+      }
+    }
     const btn = document.getElementById('comprobarConfirm');
     const originalLabel = btn.textContent;
     btn.disabled = true; btn.textContent = 'Subiendo…';
-    const path = pathGasto(g.cuenta, pendingComprobar, v.ext);
-    const up = await subirArchivo(file, path);
+    const nuevosArchivos = [];
+    for(let i=0; i<files.length; i++){
+      const f = files[i];
+      const ext = extOf(f.name);
+      const path = pathGasto(g.cuenta, pendingComprobar, i, ext);
+      const up = await subirArchivo(f, path);
+      if(!up.ok){
+        btn.disabled = false; btn.textContent = originalLabel;
+        errEl.textContent = `"${f.name}": ${up.msg}`;
+        errEl.hidden = false;
+        return;
+      }
+      nuevosArchivos.push({path, nombre: f.name});
+    }
     btn.disabled = false; btn.textContent = originalLabel;
-    if(!up.ok){ errEl.textContent = up.msg; errEl.hidden = false; return; }
-    archivoPath = path;
-    archivoNombre = file.name;
+    archivos = nuevosArchivos;
+    // Si esta vez se subieron menos archivos que antes, los índices sobrantes de la subida
+    // anterior quedarían huérfanos en storage (ya no referenciados por ningún link) — se borran
+    // para no dejarlos acumulados indefinidamente.
+    if(archivosPrevios.length > nuevosArchivos.length){
+      borrarArchivosStorage(archivosPrevios.slice(nuevosArchivos.length).map(a=>a.path));
+    }
   }
 
   const entry = {
@@ -1903,7 +1986,7 @@ document.getElementById('comprobarConfirm').addEventListener('click', async ()=>
     comprobanteTipo: entry.tipo,
     comprobanteRef: entry.ref,
   };
-  if(archivoPath){ body.archivoPath = archivoPath; body.archivoNombre = archivoNombre; }
+  if(archivos.length){ body.archivos = archivos; }
   if(completo){
     body.estado = 'comprobado';
     body.fechaComprobado = new Date().toISOString();

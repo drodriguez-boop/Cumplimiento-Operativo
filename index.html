@@ -409,6 +409,8 @@ details.config[open] summary::before{transform:rotate(90deg);}
     </div>
   </section>
 
+  <div id="pendingMioResumenEmetrix" style="color:var(--warn);font-size:12px;line-height:1.4;margin:-4px 0 12px;" hidden></div>
+
   <div class="tablewrap">
     <div class="tablewrap-scroll">
       <table>
@@ -416,6 +418,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
           <tr>
             <th>Cuenta</th>
             <th>KPI 3 · Plan entregado a tiempo</th>
+            <th>Confirmación de Abraham</th>
           </tr>
         </thead>
         <tbody id="tbodyEmetrix"></tbody>
@@ -428,7 +431,8 @@ details.config[open] summary::before{transform:rotate(90deg);}
     <ul>
       <li>El plazo se calcula como el <strong>4° día hábil contando hacia atrás desde el último día hábil del mes que cierra</strong> (el último día hábil cuenta como el primero de esos 4) — así da 25-sep para el plan de octubre, como me confirmaste. Ajustable en Configuración.</li>
       <li>El % usa la misma lógica que nómina: por gerente, peso igual entre todos, promedio simple si trae varias cuentas.</li>
-      <li><strong>Confirmado contigo:</strong> en cuanto se sube el archivo del plan, se marca como "plan cargado" de inmediato — ya no se espera que Abraham confirme. De paso, esta vista abre un correo ya redactado para avisarle a Abraham (necesitas darle enviar, no se manda solo; si no configuras su correo en Parámetros, no se abre nada).</li>
+      <li>En cuanto el gerente/ejecutivo sube el archivo del plan, se marca "a tiempo"/"fuera de tiempo" de inmediato para el KPI3 de esta cuenta. De paso, esta vista abre un correo ya redactado para avisarle a Abraham (necesitas darle enviar, no se manda solo; si no configuras su correo en Parámetros, no se abre nada).</li>
+      <li><strong>Nuevo:</strong> eso ya no basta para dar el plan por recibido — Abraham ahora tiene su propio inicio de sesión (rol "Emetrix") y debe entrar a confirmar recepción por separado; mientras no lo haga, la cuenta queda como "esperando confirmación de Abraham".</li>
     </ul>
   </div>
 
@@ -693,7 +697,7 @@ let db = null;
 // currentUser = {id, email, nombre, rol, cuentas} una vez que el login y el perfil (tabla
 // "perfiles" en Supabase) ya cargaron. Mientras no haya currentUser no se debe pintar ni pedir
 // datos de negocio — ver showLoginScreen()/showApp()/init() más abajo.
-const ROL_LABELS = { gerente:'Gerente', ejecutivo:'Ejecutivo', contadora:'Contadora', nominista:'Nominista', admin:'Administrador' };
+const ROL_LABELS = { gerente:'Gerente', ejecutivo:'Ejecutivo', contadora:'Contadora', nominista:'Nominista', emetrix:'Emetrix', admin:'Administrador' };
 let currentUser = null;
 let supaClient = null;
 let appStarted = false;
@@ -703,7 +707,7 @@ let dataUnsubscribers = [];
 // null = sin restricción de cuentas (ve todas); array = solo puede ver esas cuentas.
 function currentCuentaFilter(){
   if(!currentUser) return [];
-  if(currentUser.rol === 'admin' || currentUser.rol === 'contadora' || currentUser.rol === 'nominista') return null;
+  if(currentUser.rol === 'admin' || currentUser.rol === 'contadora' || currentUser.rol === 'nominista' || currentUser.rol === 'emetrix') return null;
   return Array.isArray(currentUser.cuentas) ? currentUser.cuentas : [];
 }
 function visibleCuentaIds(){
@@ -728,6 +732,7 @@ function visibleGerentes(){
 function allowedTabsForRole(rol){
   if(rol==='contadora') return ['gastos'];
   if(rol==='nominista') return ['nomina'];
+  if(rol==='emetrix') return ['emetrix']; // Abraham: solo ve Plan de trabajo (KPI3)
   return ['portada','nomina','emetrix','gastos']; // admin, gerente, ejecutivo
 }
 
@@ -742,6 +747,18 @@ function puedeConfirmarKpi1(){
 }
 function puedeConfirmarKpi2(){
   return !!currentUser && (currentUser.rol==='nominista' || currentUser.rol==='admin');
+}
+
+// --- Plan de trabajo / Emetrix (KPI3): mismo patrón de dos pasos que nómina ---
+// Paso 1 (entrega/carga del plan) lo confirma quien lo sube: el gerente/ejecutivo dueño de la
+// cuenta, o admin — mismo criterio que puedeConfirmarKpi1(). Paso 2 (confirmación de recepción)
+// es un paso aparte que le toca a Abraham (rol "emetrix", que ve todas las cuentas sin importar
+// gerente, igual que nominista) o a admin — mismo criterio que puedeConfirmarKpi2().
+function puedeConfirmarPlanEntrega(){
+  return !!currentUser && (currentUser.rol==='gerente' || currentUser.rol==='ejecutivo' || currentUser.rol==='admin');
+}
+function puedeConfirmarPlanAbraham(){
+  return !!currentUser && (currentUser.rol==='emetrix' || currentUser.rol==='admin');
 }
 function identidadActual(){
   if(!currentUser) return 'Sin nombre';
@@ -1309,6 +1326,8 @@ function renderEmetrix(){
   const per = meses.find(x=>x.key===selectedMes);
 
   const cuentaData = {};
+  const puedeEntrega = puedeConfirmarPlanEntrega(), puedeAbraham = puedeConfirmarPlanAbraham();
+  let pendingEntregaParaMi = 0, pendingAbrahamParaMi = 0;
   CUENTAS.forEach(c=>{
     const rec = cumplimientoEmetrixDocs[docId(c.id, per.key)] || {};
     const confirmado = rec.fechaConfirmacion ? new Date(rec.fechaConfirmacion) : null;
@@ -1321,11 +1340,49 @@ function renderEmetrix(){
     } else if(today > per.deadline){
       chip = `<span class="chip bad">✕ venció sin cargar el plan</span>`;
       score = 0;
-    } else {
+    } else if(puedeEntrega){
+      pendingEntregaParaMi++;
       chip = `<span class="chip pending">pendiente (vence ${fmtShort(per.deadline)})</span> <button class="action" onclick="openPrompt('${c.id}','${per.key}','${per.label}','emetrix')">Marcar plan cargado</button>`;
+    } else {
+      // Abraham (u otro rol sin permiso sobre este paso): lo ve, pero no puede accionarlo — le
+      // toca al gerente/ejecutivo dueño de la cuenta subir el archivo.
+      chip = `<span class="chip pending">pendiente (vence ${fmtShort(per.deadline)})</span> <span class="chip na">le corresponde al gerente/ejecutivo</span>`;
     }
-    cuentaData[c.id] = {chip, score};
+
+    // Paso 2 (KPI3): confirmación de recepción de Abraham. Solo se activa una vez que el plan
+    // ya se cargó — mismo patrón que el "cero errores" de nómina, que se activa tras el pago.
+    let chip2;
+    if(!confirmado){
+      chip2 = `<span class="chip na">se activa cuando se cargue el plan</span>`;
+    } else if(rec.abrahamConfirmado){
+      const quien2 = rec.abrahamConfirmadoPor ? `<div class="confirmado-por">${rec.abrahamConfirmadoPor}</div>` : '';
+      chip2 = `<span class="chip ok">✓ confirmado</span>${quien2}`;
+    } else if(puedeAbraham){
+      pendingAbrahamParaMi++;
+      chip2 = `<button class="action" onclick="confirmarPlanAbraham('${c.id}','${per.key}')">Confirmar recepción</button>`;
+    } else {
+      // Gerente/ejecutivo viendo su propia cuenta: este paso ya no es suyo, lo confirma Abraham.
+      chip2 = `<span class="chip na">esperando confirmación de Abraham</span>`;
+    }
+
+    cuentaData[c.id] = {chip, chip2, score};
   });
+
+  // Aviso de "qué me toca a mí" — mismo patrón que el de nómina: Abraham ve todas las cuentas
+  // (currentCuentaFilter le regresa null), así que sin esto tendría que revisar cuenta por
+  // cuenta buscando cuáles ya tienen plan cargado y siguen sin su confirmación.
+  const pendingBannerEmetrix = document.getElementById('pendingMioResumenEmetrix');
+  if(pendingBannerEmetrix){
+    if(puedeAbraham && pendingAbrahamParaMi>0){
+      pendingBannerEmetrix.hidden = false;
+      pendingBannerEmetrix.textContent = `Tienes ${pendingAbrahamParaMi} plan${pendingAbrahamParaMi>1?'es':''} de trabajo (viendo todas las cuentas) esperando tu confirmación de recepción.`;
+    } else if(puedeEntrega && pendingEntregaParaMi>0){
+      pendingBannerEmetrix.hidden = false;
+      pendingBannerEmetrix.textContent = `Tienes ${pendingEntregaParaMi} plan${pendingEntregaParaMi>1?'es':''} de trabajo pendiente${pendingEntregaParaMi>1?'s':''} de cargar.`;
+    } else {
+      pendingBannerEmetrix.hidden = true;
+    }
+  }
 
   const pesoGerente = 100/GERENTES_VIEW.length;
   let kpiSum=0, kpiEvalGerentes=0;
@@ -1336,7 +1393,7 @@ function renderEmetrix(){
     setGerenteScore(g.nombre, 'kpi3', gScore);
     const cls = s=>s===null?'na':(s>=1?'ok':(s<=0?'bad':'mid'));
     const header = `<tr class="gerente-row">
-      <td colspan="2">
+      <td colspan="3">
         <span class="gerente-name">${g.nombre}</span>
         <span class="gerente-peso">${pesoGerente.toFixed(1)}% del KPI · ${g.cuentas.length} cuenta${g.cuentas.length>1?'s':''}</span>
         <span class="gerente-score ${cls(gScore)}">KPI3: ${gScore===null?'sin datos':Math.round(gScore*100)+'%'}</span>
@@ -1344,7 +1401,7 @@ function renderEmetrix(){
     </tr>`;
     const cuentaRows = g.cuentas.map(cid=>{
       const c = CUENTA_BY_ID[cid];
-      return `<tr><td><span class="cuenta-name">${c.id}</span></td><td>${cuentaData[cid].chip}</td></tr>`;
+      return `<tr><td><span class="cuenta-name">${c.id}</span></td><td>${cuentaData[cid].chip}</td><td>${cuentaData[cid].chip2}</td></tr>`;
     }).join('');
     return header + cuentaRows;
   }).join('');
@@ -1704,25 +1761,21 @@ function openPrompt(cuenta, obKey, obLabel, tipo){
   const isEmetrix = pendingConfirm.tipo === 'emetrix';
   const isNomina = pendingConfirm.tipo === 'nomina';
   if(isNomina && !puedeConfirmarKpi1()) { pendingConfirm=null; return; } // botón no debería mostrarse, pero por si acaso
+  if(isEmetrix && !puedeConfirmarPlanEntrega()) { pendingConfirm=null; return; } // idem — este paso es de quien sube el plan (gerente/ejecutivo/admin), no de Abraham
   document.getElementById('promptTitle').textContent = (isEmetrix ? 'Marcar plan cargado — ' : 'Confirmar entrega — ')+cuenta+(obLabel?' · '+obLabel:'');
   const nameInput = document.getElementById('promptName');
-  if(isNomina){
-    // Ya hay cuentas reales por login — se toma la identidad de la sesión en vez de pedirla
-    // por texto libre (antes cualquiera podía escribir cualquier nombre aquí).
-    document.getElementById('promptSub').textContent = `Vas a confirmar esta entrega como ${identidadActual()}.`;
-    nameInput.value = identidadActual();
-    nameInput.hidden = true;
-  } else {
-    document.getElementById('promptSub').textContent = isEmetrix
-      ? '¿Quién está cargando el plan de esta cuenta? Se marca como cumplido de inmediato.'
-      : '¿Quién está confirmando esta entrega?';
-    nameInput.hidden = false;
-    nameInput.value='';
-  }
+  // Ya hay cuentas reales por login — se toma la identidad de la sesión en vez de pedirla por
+  // texto libre (antes cualquiera podía escribir cualquier nombre aquí), tanto para nómina
+  // (KPI1) como para el plan de trabajo (paso 1 de KPI3, "plan cargado").
+  document.getElementById('promptSub').textContent = isEmetrix
+    ? `Vas a marcar el plan de esta cuenta como cargado, como ${identidadActual()}.`
+    : `Vas a confirmar esta entrega como ${identidadActual()}.`;
+  nameInput.value = identidadActual();
+  nameInput.hidden = true;
   document.getElementById('promptFileRow').hidden = false;
   resetPromptFileField();
   document.getElementById('namePrompt').classList.add('show');
-  (isNomina ? document.getElementById('promptConfirm') : nameInput).focus();
+  document.getElementById('promptConfirm').focus();
 }
 document.getElementById('promptCancel').addEventListener('click', ()=>{
   document.getElementById('namePrompt').classList.remove('show'); pendingConfirm=null;
@@ -1730,13 +1783,19 @@ document.getElementById('promptCancel').addEventListener('click', ()=>{
 document.getElementById('promptConfirm').addEventListener('click', async ()=>{
   if(!pendingConfirm || !db) { document.getElementById('namePrompt').classList.remove('show'); return; }
   const isNominaKpi1 = pendingConfirm.tipo === 'nomina';
+  const isEmetrix = pendingConfirm.tipo === 'emetrix';
   if(isNominaKpi1 && !puedeConfirmarKpi1()){
     // Defensa extra: el botón que abre este modal ya está oculto para quien no puede hacer
     // este paso, pero por si el modal quedó abierto de antes (cambio de rol, etc.) no se deja
     // escribir el registro.
     document.getElementById('namePrompt').classList.remove('show'); pendingConfirm=null; return;
   }
-  const name = isNominaKpi1 ? identidadActual() : (document.getElementById('promptName').value.trim() || 'Sin nombre');
+  if(isEmetrix && !puedeConfirmarPlanEntrega()){
+    // Misma defensa extra, para el paso de "plan cargado" (no confundir con la confirmación
+    // de Abraham, que es puedeConfirmarPlanAbraham() y no pasa por este modal).
+    document.getElementById('namePrompt').classList.remove('show'); pendingConfirm=null; return;
+  }
+  const name = identidadActual();
 
   if(pendingConfirm.tipo==='gasto_aprobar'){
     document.getElementById('namePrompt').classList.remove('show');
@@ -1750,8 +1809,6 @@ document.getElementById('promptConfirm').addEventListener('click', async ()=>{
     catch(e){ console.error(e); }
     pendingConfirm=null; return;
   }
-
-  const isEmetrix = pendingConfirm.tipo === 'emetrix';
 
   // Si se eligió un archivo, se valida y sube ANTES de cerrar el modal y escribir el registro —
   // así, si algo falla, el usuario ve el error y puede reintentar sin perder lo ya escrito.
@@ -1784,14 +1841,17 @@ document.getElementById('promptConfirm').addEventListener('click', async ()=>{
   try{
     if(docsMap[id]) await ref.update(body); else await ref.set(body);
   }catch(e){ console.error(e); }
-  // Confirmado contigo: en cuanto se carga el plan queda cumplido de inmediato (ya no espera
-  // confirmación de Abraham) — y de paso se le avisa por correo. Esta vista no puede mandar el
+  // En cuanto se carga el plan, el KPI3 (entrega a tiempo) ya queda cumplido de inmediato para
+  // esta cuenta — pero ahora eso ya no es suficiente por sí solo (confirmado con el dueño del
+  // producto): Abraham (rol "emetrix", con su propio login) tiene que entrar y confirmar que lo
+  // recibió (ver confirmarPlanAbraham) antes de que el registro cuente como del todo completo.
+  // De paso, esta vista abre un correo ya redactado para avisarle. Esta vista no puede mandar el
   // correo sola (no hay backend todavía), así que abre un mailto: ya redactado; falta darle
   // enviar. Si no hay correo de Abraham configurado (Parámetros de Emetrix), no se abre nada.
   if(isEmetrix && configEmetrix.abrahamEmail){
     const asunto = encodeURIComponent(`Plan de trabajo cargado — ${pendingConfirm.cuenta}${pendingConfirm.label?' — '+pendingConfirm.label:''}`);
     const cuerpo = encodeURIComponent(
-      `Hola Abraham,\n\nTe aviso que ya se cargó el plan de trabajo de la cuenta ${pendingConfirm.cuenta}${pendingConfirm.label?' ('+pendingConfirm.label+')':''}.\n\nLo cargó: ${name}\nFecha: ${fmtShort(new Date())}\n\nSaludos.`
+      `Hola Abraham,\n\nTe aviso que ya se cargó el plan de trabajo de la cuenta ${pendingConfirm.cuenta}${pendingConfirm.label?' ('+pendingConfirm.label+')':''}.\n\nLo cargó: ${name}\nFecha: ${fmtShort(new Date())}\n\nQueda pendiente tu confirmación de recepción en el tablero.\n\nSaludos.`
     );
     window.open(`mailto:${configEmetrix.abrahamEmail}?subject=${asunto}&body=${cuerpo}`, '_blank');
   }
@@ -1818,6 +1878,19 @@ async function setError(cuenta, quincenaKey, huboError, extra){
   const body = Object.assign({huboError, errorConfirmadoPor: identidadActual(), errorFechaConfirmacion: new Date().toISOString()}, extra||{});
   try{
     if(cumplimientoDocs[id]) await ref.update(body); else await ref.set(Object.assign({cuenta, quincena:quincenaKey}, body));
+  }catch(e){ console.error(e); }
+}
+
+// Paso 2 del plan de trabajo (KPI3): confirmación de recepción de Abraham. Mismo patrón que
+// setError() de nómina (KPI2) — identidad tomada de la sesión, sin texto libre.
+async function confirmarPlanAbraham(cuenta, mesKey){
+  if(!db) return;
+  if(!puedeConfirmarPlanAbraham()) return; // este paso lo confirma Abraham (rol "emetrix") o admin
+  const id = docId(cuenta, mesKey);
+  const ref = db.collection('cumplimientoEmetrix').doc(id);
+  const body = {abrahamConfirmado:true, abrahamConfirmadoPor: identidadActual(), abrahamFechaConfirmacion: new Date().toISOString()};
+  try{
+    if(cumplimientoEmetrixDocs[id]) await ref.update(body); else await ref.set(Object.assign({cuenta, periodo:mesKey}, body));
   }catch(e){ console.error(e); }
 }
 

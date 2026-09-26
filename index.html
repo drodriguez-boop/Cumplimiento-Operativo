@@ -541,6 +541,11 @@ details.config[open] summary::before{transform:rotate(90deg);}
     <h3 id="promptTitle">Confirmar entrega</h3>
     <p id="promptSub">¿Quién está confirmando esto?</p>
     <input type="text" id="promptName" placeholder="Tu nombre">
+    <div class="field" id="promptFechaRow">
+      <label for="promptFecha">Fecha real de entrega</label>
+      <input type="date" id="promptFecha">
+      <p class="file-error" id="promptFechaError" hidden></p>
+    </div>
     <div class="field" id="promptFileRow">
       <label>Archivo (opcional)</label>
       <input type="file" id="promptFile" accept=".pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png">
@@ -1183,8 +1188,16 @@ function render(){
         chip = (ok ? `<span class="chip ok">✓ a tiempo</span>` : `<span class="chip bad">✕ fuera de tiempo</span>`) + ' ' + archivoBtnHtml(rec.archivoPath) + quien;
         eval1++; if(ok) onTime1++;
       } else if(today > ob.limiteEC){
-        chip = `<span class="chip bad">✕ venció sin confirmar</span>`;
         eval1++;
+        if(puedeKpi1){
+          // Venció sin que nadie confirmara, pero quien podría hacerlo (gerente/ejecutivo/admin)
+          // sigue viendo esto — no es un callejón sin salida: puede registrar la fecha real
+          // (aunque sea tarde) para que el histórico quede correcto en vez de perderse.
+          pendingKpi1ParaMi++;
+          chip = `<span class="chip bad">✕ venció sin confirmar</span> <button class="action" onclick="openPrompt('${c.id}','${ob.key}','${ob.label}')">Registrar fecha real</button>`;
+        } else {
+          chip = `<span class="chip bad">✕ venció sin confirmar</span>`;
+        }
       } else if(puedeKpi1){
         pendingKpi1ParaMi++;
         chip = `<span class="chip pending">pendiente (vence ${fmtShort(ob.limiteEC)})</span> <button class="action" onclick="openPrompt('${c.id}','${ob.key}','${ob.label}')">Confirmar entrega</button>`;
@@ -1367,8 +1380,15 @@ function renderEmetrix(){
       chip = (ok ? `<span class="chip ok">✓ a tiempo</span>` : `<span class="chip bad">✕ fuera de tiempo</span>`) + ' ' + archivoBtnHtml(rec.archivoPath) + quien;
       score = ok ? 1 : 0;
     } else if(today > per.deadline){
-      chip = `<span class="chip bad">✕ venció sin cargar el plan</span>`;
       score = 0;
+      if(puedeEntrega){
+        // Mismo criterio que nómina: no es un callejón sin salida — quien puede cargar el plan
+        // sigue pudiendo registrar la fecha real (aunque sea tarde) para el histórico.
+        pendingEntregaParaMi++;
+        chip = `<span class="chip bad">✕ venció sin cargar el plan</span> <button class="action" onclick="openPrompt('${c.id}','${per.key}','${per.label}','emetrix')">Registrar fecha real</button>`;
+      } else {
+        chip = `<span class="chip bad">✕ venció sin cargar el plan</span>`;
+      }
     } else if(puedeEntrega){
       pendingEntregaParaMi++;
       chip = `<span class="chip pending">pendiente (vence ${fmtShort(per.deadline)})</span> <button class="action" onclick="openPrompt('${c.id}','${per.key}','${per.label}','emetrix')">Marcar plan cargado</button>`;
@@ -1801,6 +1821,16 @@ function openPrompt(cuenta, obKey, obLabel, tipo){
     : `Vas a confirmar esta entrega como ${identidadActual()}.`;
   nameInput.value = identidadActual();
   nameInput.hidden = true;
+  // Fecha real de entrega: por defecto hoy, pero editable — así se puede registrar una entrega
+  // que en realidad pasó días antes (o, si ya venció el plazo, registrar tarde la fecha real)
+  // en vez de que el sistema siempre grabe "ahora mismo" como si acabara de pasar.
+  const fechaInput = document.getElementById('promptFecha');
+  const fechaError = document.getElementById('promptFechaError');
+  const todayIso = iso(new Date());
+  fechaInput.value = todayIso;
+  fechaInput.max = todayIso;
+  fechaError.hidden = true; fechaError.textContent = '';
+  document.getElementById('promptFechaRow').hidden = false;
   document.getElementById('promptFileRow').hidden = false;
   resetPromptFileField();
   document.getElementById('namePrompt').classList.add('show');
@@ -1839,6 +1869,35 @@ document.getElementById('promptConfirm').addEventListener('click', async ()=>{
     pendingConfirm=null; return;
   }
 
+  // Fecha real de entrega (nómina KPI1 / plan de trabajo paso 1): se valida ANTES de subir
+  // archivo o escribir nada — nunca se usa "ahora mismo" a ciegas, para que el histórico de
+  // cumplimiento quede con la fecha real (por ejemplo, si se confirma hoy algo que en realidad
+  // se entregó días atrás, o si ya venció el plazo y se está registrando tarde).
+  const fechaInputEl = document.getElementById('promptFecha');
+  const fechaErrEl = document.getElementById('promptFechaError');
+  fechaErrEl.hidden = true; fechaErrEl.textContent = '';
+  const fechaVal = fechaInputEl.value;
+  if(!fechaVal){
+    fechaErrEl.textContent = 'Indica la fecha real de entrega.';
+    fechaErrEl.hidden = false;
+    return;
+  }
+  // Se parsea a componentes locales (año, mes, día) en vez de `new Date(fechaVal)` directo:
+  // un string "AAAA-MM-DD" lo interpreta el motor de JS como medianoche UTC, lo que en México
+  // (UTC-6) lo recorre un día hacia atrás al mostrarlo en hora local. Construyéndolo con
+  // new Date(y, m-1, d) queda a medianoche LOCAL, igual que ob.limiteEC / per.deadline (ver
+  // deadlinesFor/buildMeses), así la comparación "fechaConfirmacion <= limiteEC" compara
+  // día-calendario contra día-calendario sin desfases.
+  const [fy, fm, fd] = fechaVal.split('-').map(Number);
+  const fechaElegida = new Date(fy, fm-1, fd);
+  const hoyLocal = new Date(); hoyLocal.setHours(0,0,0,0);
+  if(fechaElegida > hoyLocal){
+    fechaErrEl.textContent = 'La fecha real de entrega no puede ser futura.';
+    fechaErrEl.hidden = false;
+    return;
+  }
+  const fechaConfirmacionISO = fechaElegida.toISOString();
+
   // Si se eligió un archivo, se valida y sube ANTES de cerrar el modal y escribir el registro —
   // así, si algo falla, el usuario ve el error y puede reintentar sin perder lo ya escrito.
   const fileInput = document.getElementById('promptFile');
@@ -1864,7 +1923,7 @@ document.getElementById('promptConfirm').addEventListener('click', async ()=>{
   const coll = isEmetrix ? 'cumplimientoEmetrix' : 'cumplimiento';
   const docsMap = isEmetrix ? cumplimientoEmetrixDocs : cumplimientoDocs;
   const id = docId(pendingConfirm.cuenta, pendingConfirm.key);
-  const body = {cuenta: pendingConfirm.cuenta, periodo: pendingConfirm.key, fechaConfirmacion: new Date().toISOString(), confirmadoPor: name};
+  const body = {cuenta: pendingConfirm.cuenta, periodo: pendingConfirm.key, fechaConfirmacion: fechaConfirmacionISO, confirmadoPor: name};
   if(archivoPath){ body.archivoPath = archivoPath; body.archivoNombre = archivoNombre; }
   const ref = db.collection(coll).doc(id);
   try{
@@ -2056,6 +2115,7 @@ function openGastoAprobarPrompt(id, rol){
   document.getElementById('promptSub').textContent = '¿Quién está aprobando este gasto?';
   document.getElementById('promptName').hidden = false; // el flujo de nómina puede haber dejado este campo oculto
   document.getElementById('promptName').value='';
+  document.getElementById('promptFechaRow').hidden = true; // este paso no representa una fecha de "entrega" — no aplica aquí
   document.getElementById('promptFileRow').hidden = true;
   resetPromptFileField();
   document.getElementById('namePrompt').classList.add('show');
@@ -2067,6 +2127,7 @@ function openGastoPagarPrompt(id){
   document.getElementById('promptSub').textContent = '¿Quién de Finanzas confirma el pago y la validación de documentos?';
   document.getElementById('promptName').hidden = false; // el flujo de nómina puede haber dejado este campo oculto
   document.getElementById('promptName').value='';
+  document.getElementById('promptFechaRow').hidden = true; // este paso no representa una fecha de "entrega" — no aplica aquí
   document.getElementById('promptFileRow').hidden = true;
   resetPromptFileField();
   document.getElementById('namePrompt').classList.add('show');

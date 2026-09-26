@@ -1033,11 +1033,14 @@ function periodoParaCorreo(obKey, obLabel){
   return obLabel || obKey;
 }
 
+// Incluye 3 meses hacia atrás (para poder capturar fechas reales de periodos ya cerrados,
+// como nómina de un mes anterior) y 4 meses hacia adelante, igual que antes.
 function buildQuincenas(){
   const today = new Date(); today.setHours(0,0,0,0);
   const list=[];
-  let y=today.getFullYear(), m=today.getMonth()+1;
-  for(let i=0;i<4;i++){
+  let y=today.getFullYear(), m=today.getMonth()+1-3;
+  while(m<1){ m+=12; y--; }
+  for(let i=0;i<7;i++){
     [15,30].forEach(day=>{
       const T = pagoNormal(y,m,day);
       const inicio = day===15 ? new Date(y,m-1,1) : new Date(y,m-1,16);
@@ -1064,8 +1067,10 @@ function buildSemanas(){
   let jueves = new Date(today);
   const diff = (4 - dow + 7) % 7;
   jueves.setDate(jueves.getDate() + diff);
+  jueves.setDate(jueves.getDate() - 13*7); // retrocede ~13 semanas (3 meses) para poder
+  // capturar fechas reales de semanas ya cerradas, igual que se hizo con las quincenas.
   const list=[];
-  for(let i=0;i<17;i++){ // ~4 meses de semanas, mismo horizonte que las quincenas
+  for(let i=0;i<30;i++){ // ~3 meses hacia atrás + ~4 meses hacia adelante
     const pago = new Date(jueves);
     const lunes = subDays(pago,3);
     list.push({key:'sem-'+iso(pago), pago, inicio:lunes, label:`Semana del ${fmtShort(lunes)} al ${fmtShort(pago)}`});
@@ -1128,11 +1133,14 @@ function dia25Ajustado(y,m){
   return d;
 }
 
+// Incluye 3 meses hacia atrás (para poder capturar la fecha real de un plan de trabajo de un
+// mes ya cerrado, como agosto) y 5 meses hacia adelante, igual que antes.
 function buildMeses(){
   const today = new Date(); today.setHours(0,0,0,0);
   const list=[];
-  let y=today.getFullYear(), m=today.getMonth()+1; // mes que cierra
-  for(let i=0;i<5;i++){
+  let y=today.getFullYear(), m=today.getMonth()+1-3; // mes que cierra
+  while(m<1){ m+=12; y--; }
+  for(let i=0;i<8;i++){
     const deadline = dia25Ajustado(y,m);
     let ny=y, nm=m+1; if(nm>12){nm=1;ny++;}
     const mesObjetivo = new Date(ny,nm-1,1).toLocaleString('es-MX',{month:'long',year:'numeric'});

@@ -58,7 +58,7 @@
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
 body{font-family:var(--font-sans);background:var(--paper);color:var(--ink);font-size:14.5px;line-height:1.5;-webkit-font-smoothing:antialiased;}
-.wrap{max-width:1080px;margin:0 auto;padding:36px 28px 64px;}
+.wrap{max-width:1220px;margin:0 auto;padding:36px 28px 64px;}
 
 header{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;margin-bottom:32px;padding-bottom:0;border-bottom:none;}
 .eyebrow{font-family:var(--font-sans);font-size:11.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:7px;}
@@ -210,12 +210,24 @@ details.config[open] summary::before{transform:rotate(90deg);}
 .alert-banner li{margin-bottom:3px;}
 .notes ul{margin:8px 0 0;padding-left:18px;}
 
-.tabs{display:inline-flex;gap:2px;margin-bottom:26px;background:var(--rule);padding:4px;border-radius:12px;}
+.app-body{display:flex;align-items:flex-start;gap:28px;}
+.tabs{display:inline-flex;gap:2px;background:var(--rule);padding:4px;border-radius:12px;}
 .tab-btn{font-family:var(--font-sans);font-size:13px;font-weight:600;letter-spacing:0;text-transform:none;padding:9px 18px;border:none;background:none;color:var(--muted);cursor:pointer;border-radius:9px;margin-bottom:0;transition:background .15s,color .15s;}
 .tab-btn:hover{color:var(--ink);}
 .tab-btn.active{color:#fff;background:var(--ink);border-bottom-color:transparent;box-shadow:var(--shadow-card);}
 .kpis.kpis-single{grid-template-columns:1fr;}
-@media (max-width:640px){.kpis.kpis-single{grid-template-columns:1fr;} .tabs{display:flex;width:100%;} .tab-btn{flex:1;text-align:center;padding:9px 8px;}}
+/* Nav lateral (pedido 28-sep: la barra de pestañas de arriba pasa a ser una barra lateral fija,
+   para navegar entre Portada/Nómina/Plan de trabajo/Gastos y ver el detalle/histórico de cada
+   rubro sin perder de vista en qué sección se está). Mismas clases .tabs/.tab-btn de siempre —
+   solo cambia el layout (columna en vez de fila) y el ancho. */
+.sidebar-nav{flex-direction:column;flex:0 0 176px;position:sticky;top:24px;align-self:flex-start;}
+.sidebar-nav .tab-btn{width:100%;text-align:left;padding:11px 16px;}
+.main-content{flex:1;min-width:0;}
+@media (max-width:780px){
+  .app-body{flex-direction:column;gap:18px;}
+  .sidebar-nav{flex-direction:row;width:100%;flex:none;position:static;}
+  .sidebar-nav .tab-btn{flex:1;text-align:center;padding:9px 8px;}
+}
 
 .logo-header{width:34px;height:34px;border-radius:8px;flex-shrink:0;}
 .header-title{display:flex;align-items:center;gap:12px;}
@@ -232,8 +244,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
 .portada-controls{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 20px;}
 .portada-controls label{font-size:12px;color:var(--muted);}
 .portada-controls select{font-family:var(--font-sans);font-size:13px;padding:7px 14px;border-radius:10px;border:1px solid var(--rule);background:var(--paper-pure);color:var(--ink);}
-#portadaHistorialLabel{max-width:420px;margin:0 auto 8px;}
-#portadaHistorial{max-width:420px;margin:0 auto 28px;}
+#portadaHistorialLabel{margin:0 auto 8px;}
 .portada-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;}
 @media (max-width:900px){.portada-stats{grid-template-columns:1fr 1fr;}}
 @media (max-width:480px){.portada-stats{grid-template-columns:1fr;}}
@@ -242,40 +253,33 @@ details.config[open] summary::before{transform:rotate(90deg);}
 .portada-stats .kpi-card:nth-child(3){border-left-color:var(--cat-teal);}
 .portada-stats .kpi-card:nth-child(4){border-left-color:var(--cat-orange);}
 
-/* --- Portada: tablero ejecutivo compacto (una fila por gerente, sin espacio en blanco) --- */
-.okr-board{background:var(--paper-pure);border:1px solid var(--rule);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-card);}
-.okr-board-head{display:flex;align-items:center;gap:18px;padding:12px 24px;border-bottom:1px solid var(--rule);font-family:var(--font-sans);font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);}
-.okr-board-head .col-nombre{width:190px;flex-shrink:0;}
-.okr-board-head .col-bar{flex:1;min-width:100px;}
-.okr-board-head .col-pct{width:60px;flex-shrink:0;text-align:right;}
-.okr-row{border-bottom:1px solid var(--rule);}
-.okr-row:last-child{border-bottom:none;}
-.okr-row-main{display:flex;align-items:center;gap:18px;padding:16px 24px;}
-.okr-row-name{width:190px;flex-shrink:0;min-width:0;}
-.okr-row-name h3{font-family:var(--font-sans);font-weight:700;font-size:15.5px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.okr-row-name .peso-tag{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);}
-.okr-row-barwrap{flex:1;min-width:100px;}
-.okr-row-barwrap .bar{margin-top:0;height:8px;}
-.okr-row-pct{font-family:var(--font-sans);font-weight:800;font-size:17px;width:60px;text-align:right;flex-shrink:0;color:var(--ink);}
-.okr-row-pct.ok{color:var(--positive);}
-.okr-row-pct.bad{color:var(--critical);}
-.okr-row-pct.na{color:var(--muted-soft);font-weight:600;font-size:12.5px;}
-.mes-historial-label{font-family:var(--font-sans);font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);padding-top:14px;margin-bottom:8px;}
-.mes-historial{max-width:340px;margin-left:auto;border:1px solid var(--rule);border-radius:10px;overflow:hidden;background:var(--paper-pure);}
-.mes-historial-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 14px;border-bottom:1px solid var(--rule);}
-.mes-historial-row:last-child{border-bottom:none;}
-.mes-historial-mes{font-family:var(--font-sans);font-size:12.5px;color:var(--ink);}
-.mes-historial-pct{font-family:var(--font-mono);font-weight:700;font-size:13px;}
-.mes-historial-pct.ok{color:var(--positive);}
-.mes-historial-pct.bad{color:var(--critical);}
-.mes-historial-pct.mid{color:var(--accent);}
-.mes-historial-pct.na{color:var(--muted-soft);font-weight:600;}
+/* --- Portada: "Actividad" — desglose por rubro (Nómina/Plan de trabajo/Gastos) x mes,
+   reemplaza el tablero por-gerente que se quitó el 28-sep ("quítalo de todos, los usuarios") y
+   también la lista de un solo número por mes que traía antes (ahora un renglón por rubro). --- */
+.mes-historial-label{font-family:var(--font-sans);font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);padding-top:14px;margin-bottom:8px;text-align:center;}
+.actividad-wrap{max-width:760px;margin:0 auto 28px;overflow-x:auto;border:1px solid var(--rule);border-radius:10px;background:var(--paper-pure);}
+.actividad-table{width:100%;border-collapse:collapse;font-family:var(--font-sans);font-size:12.5px;}
+.actividad-table th,.actividad-table td{padding:9px 11px;text-align:center;border-bottom:1px solid var(--rule);white-space:nowrap;}
+.actividad-table tr:last-child td{border-bottom:none;}
+.actividad-table th{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);text-align:center;}
+.actividad-table th:first-child,.actividad-table td:first-child{text-align:left;font-weight:600;color:var(--ink);}
+.actividad-pct{font-family:var(--font-mono);font-weight:700;}
+.actividad-pct.ok{color:var(--positive);}
+.actividad-pct.bad{color:var(--critical);}
+.actividad-pct.mid{color:var(--accent);}
+.actividad-pct.na{color:var(--muted-soft);font-weight:600;}
+/* Desglose de errores de nómina (KPI2) por tipo — visible solo para el perfil admin (Carlos),
+   pedido del 28-sep: "debe aparecer el indicador de errores en nómina... y el detalle marcado". */
+.portada-errores{max-width:420px;margin:0 auto 8px;}
+.portada-errores .mes-historial{border:1px solid var(--rule);border-radius:10px;overflow:hidden;background:var(--paper-pure);}
+.portada-errores .mes-historial-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 14px;border-bottom:1px solid var(--rule);}
+.portada-errores .mes-historial-row:last-child{border-bottom:none;}
+.portada-errores .mes-historial-mes{font-family:var(--font-sans);font-size:12.5px;color:var(--ink);}
+.portada-errores .mes-historial-pct{font-family:var(--font-mono);font-weight:700;font-size:13px;}
+.portada-errores .mes-historial-pct.bad{color:var(--critical);}
+.portada-errores-empty{font-family:var(--font-sans);font-size:12.5px;color:var(--muted-soft);text-align:center;padding:12px;border:1px dashed var(--rule);border-radius:10px;}
 @media (max-width:640px){
-  .okr-board-head{display:none;}
-  .okr-row-main{flex-wrap:wrap;gap:8px 14px;}
-  .okr-row-name{width:100%;}
-  .okr-row-barwrap{order:3;width:100%;flex:0 0 100%;}
-  .mes-historial{max-width:none;margin-left:0;}
+  .actividad-wrap{max-width:none;}
 }
 </style>
 </head>
@@ -311,12 +315,14 @@ details.config[open] summary::before{transform:rotate(90deg);}
     </div>
   </header>
 
-  <div class="tabs">
+  <div class="app-body">
+  <div class="tabs sidebar-nav">
     <button class="tab-btn active" id="tabBtnPortada" type="button">Portada</button>
     <button class="tab-btn" id="tabBtnNomina" type="button">Nómina</button>
     <button class="tab-btn" id="tabBtnEmetrix" type="button">Plan de trabajo</button>
     <button class="tab-btn" id="tabBtnGastos" type="button">Gastos</button>
   </div>
+  <div class="main-content">
 
   <div id="tabPortada" class="tab-panel">
     <div class="portada-hero">
@@ -331,9 +337,9 @@ details.config[open] summary::before{transform:rotate(90deg);}
       <select id="portadaPeriodoSelect"></select>
     </div>
     <div class="portada-stats" id="portadaStats"></div>
-    <div class="mes-historial-label" id="portadaHistorialLabel">Cumplimiento por mes</div>
-    <div class="mes-historial" id="portadaHistorial"></div>
-    <div id="portadaGerentes"></div>
+    <div class="portada-errores" id="portadaErrores" hidden></div>
+    <div class="mes-historial-label" id="portadaHistorialLabel">Actividad por mes</div>
+    <div class="actividad-wrap" id="portadaHistorial"></div>
   </div>
 
   <div id="tabNomina" class="tab-panel" hidden>
@@ -415,7 +421,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
   </div>
 
   <div class="notes">
-    <strong>Antes de usar esto en serio:</strong> este prototipo no lee el contenido de los Excel — solo registra <em>quién confirmó entrega y qué fecha real</em>, y lo compara contra el plazo calculado. Ya no se adjunta archivo aquí (se quitó, confirmado contigo): el gerente/ejecutivo captura la fecha real de entrega, y Nómina confirma esa fecha junto con si hubo error o no.
+    <strong>Antes de usar esto en serio:</strong> este prototipo no lee el contenido de los Excel — solo registra <em>quién confirmó entrega y qué fecha real</em>, y lo compara contra el plazo calculado. Ya no se adjunta archivo aquí (se quitó, confirmado contigo): el gerente/ejecutivo captura la fecha real de entrega, y ese mismo gerente/ejecutivo confirma si hubo error o no (cambio del 28-sep: ya no lo confirma Nómina/nominista).
     <ul>
       <li>Los días de proceso interno de Nómina (arriba) siguen siendo un supuesto mío — falta que Josie los confirme.</li>
       <li>Si el pago cae el 30 en un mes que no tiene 30 días (ej. febrero), se usa el último día del mes — avísenle a Josie por si aplica otra regla.</li>
@@ -559,6 +565,9 @@ details.config[open] summary::before{transform:rotate(90deg);}
   </div>
 
   </div>
+
+  </div><!-- /.main-content -->
+  </div><!-- /.app-body -->
 
 </div><!-- /#appRoot -->
 
@@ -709,12 +718,16 @@ details.config[open] summary::before{transform:rotate(90deg);}
 </div>
 
 <script>
-const ERROR_TYPES = ['dias_pago','bono','colaborador_no_considerado','complemento','otro'];
+// Catálogo de errores comunes de nómina (pedido del 28-sep, reemplaza la lista anterior) — lo
+// reporta el gerente/ejecutivo al confirmar KPI2, ya no Nómina/nominista (ver
+// puedeConfirmarKpi2()). Se deja "otro" con texto libre por si aparece algo fuera de catálogo.
+const ERROR_TYPES = ['duplicidad_pagos','pago_sin_bonos','dias_retroactivos','descuentos_fonacot_infonavit','dispersion_vales','otro'];
 const ERROR_LABELS = {
-  dias_pago: 'Días de pago mal capturados',
-  bono: 'Bono no capturado',
-  colaborador_no_considerado: 'Colaborador no considerado (cierre anticipado)',
-  complemento: 'Requirió complemento de nómina',
+  duplicidad_pagos: 'Duplicidad de pagos',
+  pago_sin_bonos: 'Pago de nómina sin bonos',
+  dias_retroactivos: 'Error de pago de días retroactivos',
+  descuentos_fonacot_infonavit: 'Errores en descuentos FONACOT e INFONAVIT',
+  dispersion_vales: 'Error en dispersión de vales',
   otro: 'Otro',
 };
 const CUENTA_IDS = ['ADM','Bepensa','Gifan','Spinmaster','Multimarca','Ajemex','Ruz','Hanes','Zuru','Hispana','Delonghi','Comercial','Piquio','Juguetimax','Disney'];
@@ -797,16 +810,17 @@ function allowedTabsForRole(rol){
 }
 
 // --- Nómina: quién puede hacer cada uno de los dos pasos de confirmación ---
-// KPI1 (entrega a tiempo) lo confirma quien sube el archivo: el gerente/ejecutivo dueño de la
-// cuenta, o admin. KPI2 (cero errores) es un paso aparte que le toca al área de Nómina
-// (rol "nominista", que ve todas las cuentas sin importar gerente) o a admin. Confirmado con
-// el dueño del producto: ya hay cuentas reales por login, así que esto ya no se pregunta por
-// texto libre — se toma de currentUser.
+// KPI1 (entrega a tiempo) y KPI2 (cero errores / reportar error) los confirma la misma persona:
+// el gerente/ejecutivo dueño de la cuenta (o admin) — cambio del 28-sep: antes KPI2 era un paso
+// aparte que le tocaba al área de Nómina (rol "nominista"), pero ya nadie ahí confirma "cero
+// errores"; ahora es el gerente/ejecutivo quien, además de capturar la fecha real de entrega,
+// confirma que la nómina se envió bien o reporta el error si lo hubo. El rol "nominista" queda
+// sin acción sobre este paso (ve la pestaña de Nómina de solo lectura).
 function puedeConfirmarKpi1(){
   return !!currentUser && (currentUser.rol==='gerente' || currentUser.rol==='ejecutivo' || currentUser.rol==='admin');
 }
 function puedeConfirmarKpi2(){
-  return !!currentUser && (currentUser.rol==='nominista' || currentUser.rol==='admin');
+  return !!currentUser && (currentUser.rol==='gerente' || currentUser.rol==='ejecutivo' || currentUser.rol==='admin');
 }
 
 // --- Plan de trabajo / Emetrix (KPI3): mismo patrón de dos pasos que nómina ---
@@ -1295,7 +1309,14 @@ function render(){
   const cuentaData = {};
   let pendingKpi1ParaMi = 0, pendingKpi2ParaMi = 0;
   const puedeKpi1 = puedeConfirmarKpi1(), puedeKpi2 = puedeConfirmarKpi2();
+  // Cuentas que le tocan a este usuario (null = todas, ej. admin) — los contadores de "pendiente
+  // para mí" de abajo se acotan a esto para no inflar el aviso con cuentas de otros gerentes
+  // (bug latente: antes contaban TODAS las cuentas en cuanto el rol tenía permiso, sin ver de
+  // quién eran — se notaba poco con Nómina/nominista porque esa vista sí veía todas, pero al
+  // pasar KPI2 a gerente/ejecutivo, que sí están acotados a sus propias cuentas, ya se notaba).
+  const misCuentas = currentCuentaFilter();
   CUENTAS.forEach(c=>{
+    const esMiCuenta = misCuentas===null || misCuentas.includes(c.id);
     const obs = obligacionesFor(q, c);
 
     let onTime1=0, eval1=0;
@@ -1315,16 +1336,16 @@ function render(){
         eval1++; if(ok) onTime1++;
       } else if(today > ob.limiteEC){
         eval1++;
-        if(puedeKpi1){
-          // Venció sin que nadie confirmara, pero quien podría hacerlo (gerente/ejecutivo/admin)
-          // sigue viendo esto — no es un callejón sin salida: puede registrar la fecha real
-          // (aunque sea tarde) para que el histórico quede correcto en vez de perderse.
+        if(puedeKpi1 && esMiCuenta){
+          // Venció sin que nadie confirmara, pero quien podría hacerlo (gerente/ejecutivo/admin,
+          // dueño de la cuenta) sigue viendo esto — no es un callejón sin salida: puede registrar
+          // la fecha real (aunque sea tarde) para que el histórico quede correcto en vez de perderse.
           pendingKpi1ParaMi++;
           chip = `<span class="chip bad">✕ venció sin confirmar</span> <button class="action" onclick="openPrompt('${c.id}','${ob.key}','${ob.label}')">Registrar fecha real</button>`;
         } else {
           chip = `<span class="chip bad">✕ venció sin confirmar</span>`;
         }
-      } else if(puedeKpi1){
+      } else if(puedeKpi1 && esMiCuenta){
         pendingKpi1ParaMi++;
         chip = `<span class="chip pending">pendiente (vence ${fmtShort(ob.limiteEC)})</span> <button class="action" onclick="openPrompt('${c.id}','${ob.key}','${ob.label}')">Confirmar entrega</button>`;
       } else {
@@ -1354,19 +1375,21 @@ function render(){
         const quien2 = rec.errorConfirmadoPor ? `<div class="confirmado-por">${rec.errorConfirmadoPor}</div>` : '';
         chip = `<span class="chip ok">✓ sin error</span>${quien2}`;
         eval2++; sinError2++;
-      } else if(puedeKpi2){
+      } else if(puedeKpi2 && esMiCuenta){
         pendingKpi2ParaMi++;
-        // Nómina confirma dos cosas a la vez: que la fecha que capturó el gerente/ejecutivo es la
-        // real, y si hubo error o no — por eso aquí se le muestra esa fecha (antes solo veía los
-        // botones, sin decir contra qué fecha estaba confirmando).
-        const fechaTxt = rec.fechaConfirmacion ? `<div class="fecha-real">Nómina recibida: ${fmtShort(new Date(rec.fechaConfirmacion))}</div>` : '';
+        // El mismo gerente/ejecutivo que capturó la fecha real de entrega confirma aquí las dos
+        // cosas que faltan: que esa fecha es correcta y si hubo error o no en el pago — por eso
+        // se muestra la fecha capturada (para confirmar contra qué se está respondiendo).
+        const fechaTxt = rec.fechaConfirmacion ? `<div class="fecha-real">Entrega registrada: ${fmtShort(new Date(rec.fechaConfirmacion))}</div>` : '';
         chip = `${fechaTxt}<div class="err-toggle">
           <button class="sel-ok-btn" onclick="setError('${c.id}','${ob.key}',false)">Sin error</button>
           <button class="sel-bad-btn" onclick="openErrorPrompt('${c.id}','${ob.key}','${ob.label}')">Con error</button>
         </div>`;
       } else {
-        // Gerente/ejecutivo viendo su propia cuenta: este paso ya no es suyo, lo confirma Nómina.
-        chip = `<span class="chip na">esperando confirmación de Nómina</span>`;
+        // Nominista (u otro rol/cuenta sin permiso sobre este paso): lo ve, pero no puede
+        // accionarlo — ya no es Nómina quien confirma "cero errores" (cambio del 28-sep), sino
+        // el gerente/ejecutivo dueño de la cuenta.
+        chip = `<span class="chip na">esperando confirmación del gerente/ejecutivo</span>`;
       }
       return `<div class="ob-line">${tag}${chip}</div>`;
     }).join('');
@@ -1471,7 +1494,7 @@ function render(){
       pendingBanner.hidden = true;
     } else if(puedeKpi2 && pendingKpi2ParaMi>0){
       pendingBanner.hidden = false;
-      pendingBanner.textContent = `Tienes ${pendingKpi2ParaMi} obligación${pendingKpi2ParaMi>1?'es':''} de nómina (viendo todas las cuentas) esperando tu confirmación de "cero errores".`;
+      pendingBanner.textContent = `Tienes ${pendingKpi2ParaMi} obligación${pendingKpi2ParaMi>1?'es':''} de nómina esperando tu confirmación de "cero errores".`;
     } else if(puedeKpi1 && pendingKpi1ParaMi>0){
       pendingBanner.hidden = false;
       pendingBanner.textContent = `Tienes ${pendingKpi1ParaMi} entrega${pendingKpi1ParaMi>1?'s':''} de nómina pendiente${pendingKpi1ParaMi>1?'s':''} de confirmar.`;
@@ -1945,62 +1968,111 @@ function agregarKpisPorGerente(porGerente, seleccion){
   return porGerente[seleccion] || {kpi1:null, kpi2:null, kpi3:null};
 }
 // Opciones del selector de Periodo: los últimos `n` meses calendario, más reciente primero.
-function mesesPortadaOpciones(n){
-  const hoy = new Date(); hoy.setHours(0,0,0,0);
-  const out = [];
-  let y = hoy.getFullYear(), m = hoy.getMonth()+1;
-  for(let i=0;i<n;i++){
-    const label = new Date(y,m-1,1).toLocaleString('es-MX',{month:'long',year:'numeric'});
-    out.push({key:`${y}-${String(m).padStart(2,'0')}`, y, m, label});
-    m--; if(m<1){m=12;y--;}
-  }
-  return out;
+// Rango de meses del selector de Periodo — pedido del 28-sep: dejarlo fijo a agosto-diciembre
+// 2026 (antes eran "los últimos 6 meses contando desde hoy", una ventana que se movía sola).
+// OJO: como es un rango fijo, hay que ampliarlo a mano cuando se acerque diciembre 2026.
+const PORTADA_MESES_FIJOS = [
+  {y:2026,m:8}, {y:2026,m:9}, {y:2026,m:10}, {y:2026,m:11}, {y:2026,m:12},
+].map(({y,m})=>({key:`${y}-${String(m).padStart(2,'0')}`, y, m, label: new Date(y,m-1,1).toLocaleString('es-MX',{month:'long',year:'numeric'})}));
+function mesesPortadaOpciones(){
+  return PORTADA_MESES_FIJOS.slice();
 }
-// Mes calendario que trae el último periodo YA CERRADO — el default del selector de Periodo.
+// Mes calendario que trae el último periodo YA CERRADO — el default del selector de Periodo,
+// con tope al rango fijo de arriba (si el último cerrado cae fuera del rango, usa el primero).
 function periodoPortadaDefault(){
   const q = ultimaQuincenaCerrada();
-  return `${q.pago.getFullYear()}-${String(q.pago.getMonth()+1).padStart(2,'0')}`;
+  const key = `${q.pago.getFullYear()}-${String(q.pago.getMonth()+1).padStart(2,'0')}`;
+  return PORTADA_MESES_FIJOS.some(p=>p.key===key) ? key : PORTADA_MESES_FIJOS[0].key;
 }
-// Historial de "Cumplimiento por mes" (últimos nMeses) para el gerente elegido (o "Todos") —
-// reemplaza los medidores que antes se repetían al expandir cada fila (pedido del 28-sep: "se ve
-// como duplicada la información"); ahora vive una sola vez, junto al selector de arriba.
-function historialMensualPortada(seleccion, nMeses){
-  const hoy = new Date(); hoy.setHours(0,0,0,0);
-  const out = [];
-  let y = hoy.getFullYear(), m = hoy.getMonth()+1;
-  for(let i=0;i<nMeses;i++){
+// "Actividad" — desglose por rubro (Nómina/Plan de trabajo/Gastos) x mes, para el gerente
+// elegido (o "Todos"). Reemplaza la lista de un solo número por mes que promediaba los 3 KPIs
+// juntos (pedido del 28-sep: verlo separado por rubro, en tabla, no en tarjeta por gerente).
+function actividadPortadaFila(seleccion, kpiKeys){
+  return PORTADA_MESES_FIJOS.map(({y,m})=>{
     const s = agregarKpisPorGerente(scoresMesCalendarioPorGerente(y, m), seleccion);
-    const vals = ['kpi1','kpi2','kpi3'].map(k=>s[k]).filter(v=>v!==null && v!==undefined);
-    const pct = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
-    const label = new Date(y,m-1,1).toLocaleString('es-MX',{month:'long',year:'numeric'});
-    out.push({label, pct});
-    m--; if(m<1){m=12;y--;}
-  }
-  return out; // más reciente primero
+    const vals = kpiKeys.map(k=>s[k]).filter(v=>v!==null && v!==undefined);
+    return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+  });
 }
-function renderPortadaHistorial(seleccion){
+function renderPortadaActividad(seleccion){
   const cont = document.getElementById('portadaHistorial');
   if(!cont) return;
-  cont.innerHTML = historialMensualPortada(seleccion, 4).map(m=>{
-    const cls = m.pct===null ? 'na' : (m.pct>=1?'ok':(m.pct<=0?'bad':'mid'));
-    const label = m.pct===null ? 'N/D' : Math.round(m.pct*100)+'%';
-    return `<div class="mes-historial-row">
-      <span class="mes-historial-mes">${m.label}</span>
-      <span class="mes-historial-pct ${cls}">${label}</span>
-    </div>`;
-  }).join('');
+  const filas = [
+    {label:'Nómina', vals: actividadPortadaFila(seleccion, ['kpi1','kpi2'])},
+    {label:'Plan de trabajo', vals: actividadPortadaFila(seleccion, ['kpi3'])},
+    // Gastos (KPI4) todavía no tiene parámetros de cumplimiento por mes (sigue en pausa, ver
+    // pestaña Gastos) — se muestra N/D en las 5 columnas hasta que eso se defina.
+    {label:'Gastos', vals: PORTADA_MESES_FIJOS.map(()=>null)},
+  ];
+  const celda = v=>{
+    const cls = v===null ? 'na' : (v>=1?'ok':(v<=0?'bad':'mid'));
+    const label = v===null ? 'N/D' : Math.round(v*100)+'%';
+    return `<td class="actividad-pct ${cls}">${label}</td>`;
+  };
+  cont.innerHTML = `<table class="actividad-table">
+    <tr><th>Actividad</th>${PORTADA_MESES_FIJOS.map(p=>`<th>${p.label.split(' de ')[0]}</th>`).join('')}</tr>
+    ${filas.map(f=>`<tr><td>${f.label}</td>${f.vals.map(celda).join('')}</tr>`).join('')}
+  </table>`;
+}
+// Desglose de errores de nómina (KPI2) por tipo, para el mes calendario (y,m) y el gerente
+// elegido (o "Todos", sumando entre gerentes) — pedido del 28-sep: "en la portada del
+// administrador Carlos, debe aparecer el indicador de errores en nómina y que salga el detalle
+// marcado". Solo se muestra en el perfil admin (los demás perfiles ya no confirman "cero
+// errores", ver puedeConfirmarKpi2()).
+function erroresNominaPorGerente(y, m){
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const quincenas = buildQuincenas().filter(q=>q.pago.getFullYear()===y && q.pago.getMonth()+1===m && q.pago<=hoy);
+  const gerentePorCuenta = {};
+  GERENTES.forEach(g=>{ g.cuentas.forEach(cid=>{ gerentePorCuenta[cid]=g.nombre; }); });
+  UNGROUPED_CUENTA_IDS.forEach(cid=>{ gerentePorCuenta[cid]='Cuentas sin gerente'; });
+  const out = {};
+  quincenas.forEach(q=>{
+    CUENTAS.forEach(c=>{
+      const nombreG = gerentePorCuenta[c.id];
+      if(!nombreG) return;
+      obligacionesFor(q, c).forEach(ob=>{
+        const rec = cumplimientoDocs[docId(c.id, ob.key)] || {};
+        if(rec.huboError === true){
+          const mapa = out[nombreG] || (out[nombreG] = {});
+          (rec.erroresTipo||[]).forEach(t=>{ mapa[t] = (mapa[t]||0) + 1; });
+        }
+      });
+    });
+  });
+  return out;
+}
+function renderPortadaErrores(seleccion, py, pm){
+  const cont = document.getElementById('portadaErrores');
+  if(!cont) return;
+  if(!currentUser || currentUser.rol !== 'admin'){ cont.hidden = true; cont.innerHTML=''; return; }
+  const porGerente = erroresNominaPorGerente(py, pm);
+  let conteo = {};
+  if(seleccion === '__todos__'){
+    Object.values(porGerente).forEach(mapa=>{
+      Object.keys(mapa).forEach(t=>{ conteo[t] = (conteo[t]||0) + mapa[t]; });
+    });
+  } else {
+    conteo = porGerente[seleccion] || {};
+  }
+  cont.hidden = false;
+  const tipos = Object.keys(conteo);
+  if(!tipos.length){
+    cont.innerHTML = `<div class="mes-historial-label">Errores de nómina reportados</div><div class="portada-errores-empty">Sin errores reportados este periodo.</div>`;
+    return;
+  }
+  cont.innerHTML = `<div class="mes-historial-label">Errores de nómina reportados</div><div class="mes-historial">${
+    tipos.map(t=>`<div class="mes-historial-row"><span class="mes-historial-mes">${ERROR_LABELS[t]||t}</span><span class="mes-historial-pct bad">${conteo[t]}</span></div>`).join('')
+  }</div>`;
 }
 
 // Fila de tarjetas arriba de la Portada (pedido de Deisa: mismo estilo de tarjeta de color que
 // ya usan Nómina/Emetrix/Gastos). Dos selectores la controlan: Gerente (o "Todos los gerentes",
 // que promedia entre quienes sí tienen dato — nunca exige que todos lo tengan) y Periodo (qué
-// mes calendario revisar — pedido del 28-sep: antes las tarjetas SIEMPRE mostraban el último mes
-// ya cerrado sin poder elegir otro). KPI1/KPI2/KPI3 salen de scoresMesCalendarioPorGerente() para
-// el mes elegido; KPI4/gastos todavía no participa de este selector (sigue en pausa) y se toma
-// del snapshot que ya arma renderGastos() para su propio mes seleccionado en esa pestaña.
-// Debajo de las tarjetas, "Cumplimiento por mes" (renderPortadaHistorial) muestra la tendencia de
-// los últimos meses para el gerente elegido — reemplaza lo que antes se repetía al expandir cada
-// fila de la lista de abajo (pedido del 28-sep: "se ve como duplicada la información").
+// mes calendario revisar, dentro del rango fijo agosto-diciembre 2026). KPI1/KPI2/KPI3 salen de
+// scoresMesCalendarioPorGerente() para el mes elegido; KPI4/gastos todavía no participa de este
+// selector (sigue en pausa) y se toma del snapshot que ya arma renderGastos().
+// Debajo de las tarjetas: el desglose de errores de nómina (solo admin) y la tabla "Actividad"
+// (Nómina/Plan de trabajo/Gastos x mes) para el gerente elegido.
 function renderPortadaStats(){
   const selG = document.getElementById('portadaGerenteSelect');
   const selP = document.getElementById('portadaPeriodoSelect');
@@ -2015,17 +2087,17 @@ function renderPortadaStats(){
     selG.innerHTML = opciones.map(n=>`<option value="${n}">${n==='__todos__'?'Todos los gerentes':n}</option>`).join('');
     selG.value = opciones.includes(prev) ? prev : (opciones[0]||'');
   }
-  const periodos = mesesPortadaOpciones(6);
+  const periodos = mesesPortadaOpciones();
   const clavesPeriodos = periodos.map(p=>p.key);
   const periodosActuales = Array.from(selP.options).map(o=>o.value);
   if(periodosActuales.join('|') !== clavesPeriodos.join('|')){
     const prevP = selP.value || periodoPortadaDefault();
     selP.innerHTML = periodos.map(p=>`<option value="${p.key}">${p.label}</option>`).join('');
-    selP.value = clavesPeriodos.includes(prevP) ? prevP : clavesPeriodos[0];
+    selP.value = clavesPeriodos.includes(prevP) ? prevP : periodoPortadaDefault();
   }
   if(!opciones.length){ cont.innerHTML=''; return; }
   const seleccionG = selG.value || opciones[0];
-  const [py, pm] = (selP.value || clavesPeriodos[0]).split('-').map(Number);
+  const [py, pm] = (selP.value || periodoPortadaDefault()).split('-').map(Number);
   const scoresObj = agregarKpisPorGerente(scoresMesCalendarioPorGerente(py, pm), seleccionG);
   const kpi4Vals = seleccionG === '__todos__'
     ? GERENTES_VIEW.map(g=>(gerenteKpiScores[g.nombre]||{}).kpi4).filter(v=>v!==undefined && v!==null)
@@ -2042,48 +2114,15 @@ function renderPortadaStats(){
       <div class="bar"><div class="bar-fill" style="width:${barPct}%;background:${barColor};"></div></div>
     </div>`;
   }).join('');
-  renderPortadaHistorial(seleccionG);
+  renderPortadaErrores(seleccionG, py, pm);
+  renderPortadaActividad(seleccionG);
 }
 document.getElementById('portadaGerenteSelect').addEventListener('change', renderPortadaStats);
 document.getElementById('portadaPeriodoSelect').addEventListener('change', renderPortadaStats);
 
-// Lista de gerentes de la Portada — ya no es expandible (el detalle por KPI vivía aquí antes;
-// ahora vive una sola vez en "Cumplimiento por mes", ligado al selector de Gerente de arriba).
-// El % de esta lista sigue siendo el del último periodo YA CERRADO (actualizarScoresPortada),
-// para dar una foto estable de cada gerente sin importar qué Periodo se esté revisando arriba.
 function renderPortada(){
   actualizarScoresPortada();
   renderPortadaStats();
-  const cont = document.getElementById('portadaGerentes');
-  const GERENTES_VIEW = visibleGerentes();
-  const filas = GERENTES_VIEW.map(g=>{
-    const scoresObj = gerenteKpiScores[g.nombre] || {};
-    const okrScore = computeOkrScore(scoresObj);
-    const pctCls = okrScore===null ? 'na' : (okrScore>=1?'ok':(okrScore<=0?'bad':''));
-    const pctLabel = okrScore===null ? 'N/D' : Math.round(okrScore*100)+'%';
-    const barPct = okrScore===null ? 0 : Math.max(0,Math.min(1,okrScore))*100;
-    const barColor = okrScore===null ? 'var(--rule-strong)' : (okrScore>=1?'var(--positive)':(okrScore<=0?'var(--critical)':'var(--accent)'));
-    return `<div class="okr-row">
-      <div class="okr-row-main">
-        <div class="okr-row-name">
-          <h3>${g.nombre}</h3>
-          <span class="peso-tag">${g.cuentas.length} cuenta${g.cuentas.length>1?'s':''}</span>
-        </div>
-        <div class="okr-row-barwrap">
-          <div class="bar"><div class="bar-fill" style="width:${barPct}%;background:${barColor};"></div></div>
-        </div>
-        <div class="okr-row-pct ${pctCls}">${pctLabel}</div>
-      </div>
-    </div>`;
-  }).join('');
-  cont.innerHTML = `<div class="okr-board">
-    <div class="okr-board-head">
-      <span class="col-nombre">Gerente</span>
-      <span class="col-bar">% OKR total</span>
-      <span class="col-pct"></span>
-    </div>
-    ${filas}
-  </div>`;
 }
 
 function renderAll(){ render(); renderEmetrix(); renderGastos(); renderPortada(); }
@@ -2242,13 +2281,14 @@ document.getElementById('promptConfirm').addEventListener('click', async ()=>{
   }
   // Mismo patrón que el aviso a Abraham arriba: al confirmar la entrega de nómina (paso 1),
   // se avisa por correo a las dos noministas — siempre las dos, sin importar la cuenta, porque
-  // deben quedar copiadas en todo (confirmado con el dueño del producto). Les toca a ellas
-  // hacer el segundo paso (KPI2 · cero errores) una vez que pase la fecha de pago.
+  // deben quedar copiadas en todo (confirmado con el dueño del producto), aunque ya no les toque
+  // accionar el segundo paso (cambio del 28-sep: KPI2 · cero errores ahora lo confirma el mismo
+  // gerente/ejecutivo, ver puedeConfirmarKpi2()) — este correo es solo informativo para ellas.
   if(isNominaKpi1){
     const periodoTxt = periodoParaCorreo(pendingConfirm.key, pendingConfirm.label);
     const asuntoNomina = encodeURIComponent(`Nómina entregada — ${pendingConfirm.cuenta} — ${periodoTxt}`);
     const cuerpoNomina = encodeURIComponent(
-      `Hola,\n\nSe confirmó la entrega de nómina de la cuenta ${pendingConfirm.cuenta} (${periodoTxt}).\n\nConfirmó: ${name}\nFecha: ${fmtShort(new Date())}${archivoNombre?`\nArchivo adjunto: ${archivoNombre}`:''}\n\nQueda pendiente su confirmación de "cero errores" (KPI2) en cuanto pase la fecha de pago.\n\nSaludos.`
+      `Hola,\n\nSe confirmó la entrega de nómina de la cuenta ${pendingConfirm.cuenta} (${periodoTxt}).\n\nConfirmó: ${name}\nFecha: ${fmtShort(new Date())}${archivoNombre?`\nArchivo adjunto: ${archivoNombre}`:''}\n\nLa confirmación de "cero errores" (KPI2) le corresponde al gerente/ejecutivo de la cuenta en cuanto pase la fecha de pago.\n\nSaludos.`
     );
     window.open(`mailto:${NOMINISTA_EMAILS.join(',')}?subject=${asuntoNomina}&body=${cuerpoNomina}`, '_blank');
   }
@@ -2257,7 +2297,7 @@ document.getElementById('promptConfirm').addEventListener('click', async ()=>{
 
 async function setError(cuenta, quincenaKey, huboError, extra){
   if(!db) return;
-  if(!puedeConfirmarKpi2()) return; // KPI2 (cero errores) lo confirma Nómina (nominista) o admin
+  if(!puedeConfirmarKpi2()) return; // KPI2 (cero errores) lo confirma gerente/ejecutivo dueño de la cuenta, o admin
   const id = docId(cuenta, quincenaKey);
   const ref = db.collection('cumplimiento').doc(id);
   const body = Object.assign({huboError, errorConfirmadoPor: identidadActual(), errorFechaConfirmacion: new Date().toISOString()}, extra||{});
@@ -2281,7 +2321,7 @@ async function confirmarPlanAbraham(cuenta, mesKey){
 
 let pendingError = null;
 function openErrorPrompt(cuenta, obKey, obLabel){
-  if(!puedeConfirmarKpi2()) return; // mismo permiso que "Sin error" — solo Nómina/admin
+  if(!puedeConfirmarKpi2()) return; // mismo permiso que "Sin error" — gerente/ejecutivo dueño de la cuenta, o admin
   pendingError = {cuenta, quincenaKey:obKey};
   document.getElementById('errorPromptTitle').textContent = 'Registrar error — '+cuenta+(obLabel?' · '+obLabel:'');
   document.getElementById('errorTypesList').innerHTML = ERROR_TYPES.map(t=>`

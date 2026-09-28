@@ -420,7 +420,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
     </div>
   </div>
 
-  <div class="notes">
+  <div class="notes" id="notesNomina">
     <strong>Antes de usar esto en serio:</strong> este prototipo no lee el contenido de los Excel — solo registra <em>quién confirmó entrega y qué fecha real</em>, y lo compara contra el plazo calculado. Ya no se adjunta archivo aquí (se quitó, confirmado contigo): el gerente/ejecutivo captura la fecha real de entrega, y ese mismo gerente/ejecutivo confirma si hubo error o no (cambio del 28-sep: ya no lo confirma Nómina/nominista).
     <ul>
       <li>Los días de proceso interno de Nómina (arriba) siguen siendo un supuesto mío — falta que Josie los confirme.</li>
@@ -487,7 +487,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
     </div>
   </div>
 
-  <div class="notes">
+  <div class="notes" id="notesEmetrix">
     <strong>Antes de usar esto en serio:</strong> igual que en nómina, esto no lee el contenido del Excel del plan de trabajo — solo registra que se marcó como cargado y compara contra el plazo calculado. Ya se puede adjuntar el archivo real (PDF, Excel, Word, JPG o PNG, máx. 20 MB) al marcar el plan como cargado; subir uno nuevo reemplaza al anterior.
     <ul>
       <li>El plazo es el <strong>último día calendario del mes que cierra</strong> (sin ajuste por fin de semana) — el plan del mes siguiente debe quedar cargado antes de esa fecha.</li>
@@ -548,7 +548,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
     </div>
   </div>
 
-  <div class="notes">
+  <div class="notes" id="notesGastos">
     <strong>Antes de usar esto en serio:</strong> al marcar "Comprobado" se registra si el comprobante es fiscal (CFDI) o no fiscal, más una referencia de texto (folio, RFC o nombre del archivo) y quién lo confirma — y ya se puede adjuntar el archivo real (PDF, Excel, Word, JPG o PNG, máx. 20 MB). Un archivo nuevo reemplaza al anterior para ese mismo gasto.
     <ul>
       <li>El cierre de mes se calcula como el último día calendario del mes (no se ajusta si cae en fin de semana) — avísame si para gastos debe ser el último día hábil, como en nómina.</li>
@@ -2683,6 +2683,13 @@ function applyRoleTabGating(){
   // que solo necesitan confirmar/registrar entregas, no ver ni tocar cómo se arman las reglas.
   const esAdmin = !!currentUser && currentUser.rol === 'admin';
   ['configPanel','configPanelEmetrix','configPanelGastos','toggleConfig','toggleConfigEmetrix','toggleConfigGastos'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.hidden = !esAdmin;
+  });
+  // Las notas de "antes de usar esto en serio" (supuestos, pendientes, cómo se calcula cada %)
+  // son para Carlos, no para el resto de los perfiles que solo confirman/registran entregas —
+  // pedido del 28-sep: "esto ya no debe aparecer en las páginas de usuarios".
+  ['notesNomina','notesEmetrix','notesGastos'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.hidden = !esAdmin;
   });

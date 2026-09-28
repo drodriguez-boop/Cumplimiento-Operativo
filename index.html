@@ -126,6 +126,7 @@ tr.gerente-row:not(:first-child) td{border-top:1px solid var(--rule-strong);}
 .ob-line:not(:last-child){border-bottom:1px dashed var(--rule);margin-bottom:1px;}
 .ob-tag{font-family:var(--font-sans);font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted-soft);white-space:nowrap;min-width:52px;}
 .confirmado-por{font-family:var(--font-mono);font-size:10px;color:var(--muted-soft);margin-top:2px;flex-basis:100%;}
+.fecha-real{font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-top:2px;flex-basis:100%;}
 .err-tag{font-family:var(--font-sans);font-size:10.5px;color:var(--critical);}
 .err-tag:not(:last-child)::after{content:", ";color:var(--muted-soft);}
 
@@ -228,6 +229,17 @@ details.config[open] summary::before{transform:rotate(90deg);}
 .portada-hero h2{font-family:var(--font-sans);font-weight:800;font-size:24px;margin:0 0 6px;}
 .portada-hero p{color:var(--muted);font-size:13px;margin:0;max-width:480px;}
 
+.portada-controls{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 20px;}
+.portada-controls label{font-size:12px;color:var(--muted);}
+.portada-controls select{font-family:var(--font-sans);font-size:13px;padding:7px 14px;border-radius:10px;border:1px solid var(--rule);background:var(--paper-pure);color:var(--ink);}
+.portada-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;}
+@media (max-width:900px){.portada-stats{grid-template-columns:1fr 1fr;}}
+@media (max-width:480px){.portada-stats{grid-template-columns:1fr;}}
+.portada-stats .kpi-card:nth-child(1){border-left-color:var(--cat-blue);}
+.portada-stats .kpi-card:nth-child(2){border-left-color:var(--cat-purple);}
+.portada-stats .kpi-card:nth-child(3){border-left-color:var(--cat-teal);}
+.portada-stats .kpi-card:nth-child(4){border-left-color:var(--cat-orange);}
+
 /* --- Portada: tablero ejecutivo compacto (una fila por gerente, sin espacio en blanco) --- */
 .okr-board{background:var(--paper-pure);border:1px solid var(--rule);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-card);}
 .okr-board-head{display:flex;align-items:center;gap:18px;padding:12px 24px;border-bottom:1px solid var(--rule);font-family:var(--font-sans);font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);}
@@ -307,6 +319,11 @@ details.config[open] summary::before{transform:rotate(90deg);}
       <h2>Cumplimiento Operativo</h2>
       <p>Porcentaje de cada KPI por gerente — Nómina, Plan de trabajo y Gastos. Busca tu nombre en la lista para ver tu avance.</p>
     </div>
+    <div class="portada-controls">
+      <label for="portadaGerenteSelect">Gerente</label>
+      <select id="portadaGerenteSelect"></select>
+    </div>
+    <div class="portada-stats" id="portadaStats"></div>
     <div id="portadaGerentes"></div>
   </div>
 
@@ -389,7 +406,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
   </div>
 
   <div class="notes">
-    <strong>Antes de usar esto en serio:</strong> este prototipo no lee el contenido de los Excel — solo registra <em>quién confirmó entrega y cuándo</em>, y lo compara contra el plazo calculado. Ya se puede adjuntar el archivo real (PDF, Excel, Word, JPG o PNG, máx. 20 MB) al confirmar la entrega; subir uno nuevo reemplaza al anterior.
+    <strong>Antes de usar esto en serio:</strong> este prototipo no lee el contenido de los Excel — solo registra <em>quién confirmó entrega y qué fecha real</em>, y lo compara contra el plazo calculado. Ya no se adjunta archivo aquí (se quitó, confirmado contigo): el gerente/ejecutivo captura la fecha real de entrega, y Nómina confirma esa fecha junto con si hubo error o no.
     <ul>
       <li>Los días de proceso interno de Nómina (arriba) siguen siendo un supuesto mío — falta que Josie los confirme.</li>
       <li>Si el pago cae el 30 en un mes que no tiene 30 días (ej. febrero), se usa el último día del mes — avísenle a Josie por si aplica otra regla.</li>
@@ -412,7 +429,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
       <div class="field">
         <label>Fecha límite para entregar el plan del mes siguiente</label>
         <input type="text" id="cfgDiasEmetrix" disabled>
-        <div class="hint">Confirmado contigo: siempre el día 25 de cada mes (el que cierra). Si el 25 cae sábado o domingo, se recorre al viernes anterior. Ya no es configurable aquí — si esta regla cambia, avísame.</div>
+        <div class="hint">Confirmado contigo: el último día calendario de cada mes (el que cierra), sin ajuste por fin de semana. Ya no es configurable aquí — si esta regla cambia, avísame.</div>
       </div>
       <div class="field">
         <label>Correo de Abraham (para avisarle cuando se cargue un plan)</label>
@@ -458,7 +475,7 @@ details.config[open] summary::before{transform:rotate(90deg);}
   <div class="notes">
     <strong>Antes de usar esto en serio:</strong> igual que en nómina, esto no lee el contenido del Excel del plan de trabajo — solo registra que se marcó como cargado y compara contra el plazo calculado. Ya se puede adjuntar el archivo real (PDF, Excel, Word, JPG o PNG, máx. 20 MB) al marcar el plan como cargado; subir uno nuevo reemplaza al anterior.
     <ul>
-      <li>El plazo se calcula como el <strong>4° día hábil contando hacia atrás desde el último día hábil del mes que cierra</strong> (el último día hábil cuenta como el primero de esos 4) — así da 25-sep para el plan de octubre, como me confirmaste. Ajustable en Configuración.</li>
+      <li>El plazo es el <strong>último día calendario del mes que cierra</strong> (sin ajuste por fin de semana) — el plan del mes siguiente debe quedar cargado antes de esa fecha.</li>
       <li>El % usa la misma lógica que nómina: por gerente, peso igual entre todos, promedio simple si trae varias cuentas.</li>
       <li>En cuanto el gerente/ejecutivo sube el archivo del plan, se marca "a tiempo"/"fuera de tiempo" de inmediato para el KPI3 de esta cuenta. De paso, esta vista abre un correo ya redactado para avisarle a Abraham (necesitas darle enviar, no se manda solo; si no configuras su correo en Parámetros, no se abre nada).</li>
       <li><strong>Nuevo:</strong> eso ya no basta para dar el plan por recibido — Abraham ahora tiene su propio inicio de sesión (rol "Emetrix") y debe entrar a confirmar recepción por separado; mientras no lo haga, la cuenta queda como "esperando confirmación de Abraham".</li>
@@ -1122,16 +1139,11 @@ function obligacionesFor(quincena, cuenta){
 }
 
 // --- KPI 3 · Emetrix: ciclo mensual, no quincenal. Cada mes que cierra tiene un plazo para
-// entregar el plan de trabajo/ruteo del mes SIGUIENTE. Confirmado contigo: el plazo es fijo,
-// el día 25 de cada mes (el mes que cierra) — si el 25 cae sábado o domingo, se recorre al
-// viernes anterior (antes se calculaba con días hábiles antes del cierre; ya no).
-function dia25Ajustado(y,m){
-  let d = new Date(y,m-1,25);
-  const dow = d.getDay(); // 0=domingo, 6=sábado
-  if(dow===6) d = new Date(y,m-1,24);
-  else if(dow===0) d = new Date(y,m-1,23);
-  return d;
-}
+// entregar el plan de trabajo/ruteo del mes SIGUIENTE. Confirmado contigo (cambio del 28-sep):
+// el plazo es el último día calendario del mes que cierra, sin ajuste por fin de semana —
+// mismo criterio que ya se usa en Gastos (ver cierreMes más abajo). Antes era el día 25 ajustado
+// al viernes anterior si caía en fin de semana; ya no.
+function ultimoDiaDelMes(y,m){ return new Date(y,m,0); } // día 0 del mes siguiente = último día de "m"
 
 // Incluye 3 meses hacia atrás (para poder capturar la fecha real de un plan de trabajo de un
 // mes ya cerrado, como agosto) y 5 meses hacia adelante, igual que antes.
@@ -1141,7 +1153,7 @@ function buildMeses(){
   let y=today.getFullYear(), m=today.getMonth()+1-3; // mes que cierra
   while(m<1){ m+=12; y--; }
   for(let i=0;i<8;i++){
-    const deadline = dia25Ajustado(y,m);
+    const deadline = ultimoDiaDelMes(y,m);
     let ny=y, nm=m+1; if(nm>12){nm=1;ny++;}
     const mesObjetivo = new Date(ny,nm-1,1).toLocaleString('es-MX',{month:'long',year:'numeric'});
     list.push({key:`${ny}-${String(nm).padStart(2,'0')}`, deadline, label:`Plan de ${mesObjetivo}`});
@@ -1171,6 +1183,9 @@ function render(){
   const today = new Date(); today.setHours(0,0,0,0);
   const GERENTES_VIEW = visibleGerentes();
   const quincenas = buildQuincenas();
+  // Carlos (rol admin) solo necesita ver el % de cumplimiento de cada gerente en esta tabla, sin
+  // el detalle operativo de cada cuenta/quincena/semana (eso es para quien confirma cada paso).
+  const vistaSimplificada = !!currentUser && currentUser.rol === 'admin';
 
   const sel = document.getElementById('quincenaSelect');
   if(!selectedQuincena){
@@ -1198,7 +1213,11 @@ function render(){
       if(confirmado){
         const ok = confirmado <= ob.limiteEC;
         const quien = rec.confirmadoPor ? `<div class="confirmado-por">${rec.confirmadoPor}</div>` : '';
-        chip = (ok ? `<span class="chip ok">✓ a tiempo</span>` : `<span class="chip bad">✕ fuera de tiempo</span>`) + ' ' + archivoBtnHtml(rec.archivoPath) + quien;
+        // Ya no se adjunta archivo en Nómina (quitado, confirmado contigo) — lo que importa es la
+        // fecha real capturada, así que se muestra en texto (antes solo se veía a tiempo/fuera de
+        // tiempo sin decir cuál fue la fecha) — esto también le sirve a Nómina para confirmar KPI2
+        // contra la fecha correcta, ver obLines2 más abajo.
+        chip = (ok ? `<span class="chip ok">✓ a tiempo</span>` : `<span class="chip bad">✕ fuera de tiempo</span>`) + ` <span class="fecha-real">${fmtShort(confirmado)}</span>` + quien;
         eval1++; if(ok) onTime1++;
       } else if(today > ob.limiteEC){
         eval1++;
@@ -1243,7 +1262,11 @@ function render(){
         eval2++; sinError2++;
       } else if(puedeKpi2){
         pendingKpi2ParaMi++;
-        chip = `<div class="err-toggle">
+        // Nómina confirma dos cosas a la vez: que la fecha que capturó el gerente/ejecutivo es la
+        // real, y si hubo error o no — por eso aquí se le muestra esa fecha (antes solo veía los
+        // botones, sin decir contra qué fecha estaba confirmando).
+        const fechaTxt = rec.fechaConfirmacion ? `<div class="fecha-real">Nómina recibida: ${fmtShort(new Date(rec.fechaConfirmacion))}</div>` : '';
+        chip = `${fechaTxt}<div class="err-toggle">
           <button class="sel-ok-btn" onclick="setError('${c.id}','${ob.key}',false)">Sin error</button>
           <button class="sel-bad-btn" onclick="openErrorPrompt('${c.id}','${ob.key}','${ob.label}')">Con error</button>
         </div>`;
@@ -1292,7 +1315,10 @@ function render(){
       </td>
     </tr>`;
 
-    const cuentaRows = g.cuentas.map(cid=>{
+    // Para Carlos (rol admin) esta tabla solo debe mostrar el % de cumplimiento por gerente —
+    // el detalle por cuenta/quincena/semana con botones de confirmación es para quien de verdad
+    // tiene que capturar algo (gerente/ejecutivo/Nómina), confirmado contigo el 28-sep.
+    const cuentaRows = vistaSimplificada ? '' : g.cuentas.map(cid=>{
       const c = CUENTA_BY_ID[cid];
       const d = cuentaData[cid];
       return `<tr>
@@ -1346,7 +1372,10 @@ function render(){
   // esto solo suma un contador arriba para no tener que ir a buscarlo.
   const pendingBanner = document.getElementById('pendingMioResumen');
   if(pendingBanner){
-    if(puedeKpi2 && pendingKpi2ParaMi>0){
+    if(vistaSimplificada){
+      // Carlos solo ve indicadores — este aviso es para quien de verdad va a confirmar algo.
+      pendingBanner.hidden = true;
+    } else if(puedeKpi2 && pendingKpi2ParaMi>0){
       pendingBanner.hidden = false;
       pendingBanner.textContent = `Tienes ${pendingKpi2ParaMi} obligación${pendingKpi2ParaMi>1?'es':''} de nómina (viendo todas las cuentas) esperando tu confirmación de "cero errores".`;
     } else if(puedeKpi1 && pendingKpi1ParaMi>0){
@@ -1763,7 +1792,53 @@ function togglePortadaCard(nombre){
   renderPortada();
 }
 
+// Fila de tarjetas arriba de la Portada (pedido de Deisa: mismo estilo de tarjeta de color que
+// ya usan Nómina/Emetrix/Gastos, pero aquí muestran el % de cada KPI del gerente elegido en el
+// selector — no el agregado de toda la organización). Si hay más de un gerente visible (el caso
+// de Carlos, que ve a todos) se agrega la opción "Todos los gerentes" al principio, que promedia
+// igual que el % OKR de cada fila (si a algún gerente le falta un KPI, ese KPI se reporta "N/D"
+// en vez de estimarlo con los que sí tienen dato).
+function renderPortadaStats(){
+  const sel = document.getElementById('portadaGerenteSelect');
+  const cont = document.getElementById('portadaStats');
+  if(!sel || !cont) return;
+  const GERENTES_VIEW = visibleGerentes();
+  const nombres = GERENTES_VIEW.map(g=>g.nombre);
+  const opciones = nombres.length>1 ? ['__todos__', ...nombres] : nombres.slice();
+  const opcionesActuales = Array.from(sel.options).map(o=>o.value);
+  if(opcionesActuales.join('|') !== opciones.join('|')){
+    const prev = sel.value;
+    sel.innerHTML = opciones.map(n=>`<option value="${n}">${n==='__todos__'?'Todos los gerentes':n}</option>`).join('');
+    sel.value = opciones.includes(prev) ? prev : (opciones[0]||'');
+  }
+  if(!opciones.length){ cont.innerHTML=''; return; }
+  const seleccion = sel.value || opciones[0];
+  let scoresObj;
+  if(seleccion === '__todos__'){
+    scoresObj = {};
+    for(const k of Object.keys(OKR_PESOS)){
+      const vals = GERENTES_VIEW.map(g=>(gerenteKpiScores[g.nombre]||{})[k]);
+      scoresObj[k] = vals.some(v=>v===undefined||v===null) ? null : vals.reduce((a,b)=>a+b,0)/vals.length;
+    }
+  } else {
+    scoresObj = gerenteKpiScores[seleccion] || {};
+  }
+  cont.innerHTML = PORTADA_KPIS.map(k=>{
+    const score = scoresObj[k.key] !== undefined ? scoresObj[k.key] : null;
+    const pctLabel = score===null ? 'N/D' : Math.round(score*100)+'%';
+    const barColor = score===null ? 'var(--rule-strong)' : (score>=1?'var(--positive)':(score<=0?'var(--critical)':'var(--accent)'));
+    const barPct = score===null ? 0 : Math.max(0,Math.min(1,score))*100;
+    return `<div class="kpi-card">
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-row"><span class="kpi-value">${pctLabel}</span></div>
+      <div class="bar"><div class="bar-fill" style="width:${barPct}%;background:${barColor};"></div></div>
+    </div>`;
+  }).join('');
+}
+document.getElementById('portadaGerenteSelect').addEventListener('change', renderPortadaStats);
+
 function renderPortada(){
+  renderPortadaStats();
   const cont = document.getElementById('portadaGerentes');
   const GERENTES_VIEW = visibleGerentes();
   const filas = GERENTES_VIEW.map(g=>{
@@ -1837,14 +1912,21 @@ function openPrompt(cuenta, obKey, obLabel, tipo){
   // Fecha real de entrega: por defecto hoy, pero editable — así se puede registrar una entrega
   // que en realidad pasó días antes (o, si ya venció el plazo, registrar tarde la fecha real)
   // en vez de que el sistema siempre grabe "ahora mismo" como si acabara de pasar.
+  // Nota (28-sep): antes se ponía fechaInput.max=hoy para bloquear fechas futuras directo en el
+  // calendario del navegador, pero eso le impedía a Deisa seleccionar días — se quita el bloqueo
+  // del selector y la validación de "no puede ser futura" se hace solo al confirmar (ver abajo),
+  // que es donde de verdad importa.
   const fechaInput = document.getElementById('promptFecha');
   const fechaError = document.getElementById('promptFechaError');
   const todayIso = iso(new Date());
   fechaInput.value = todayIso;
-  fechaInput.max = todayIso;
+  fechaInput.removeAttribute('max');
   fechaError.hidden = true; fechaError.textContent = '';
   document.getElementById('promptFechaRow').hidden = false;
-  document.getElementById('promptFileRow').hidden = false;
+  // Ya no se adjunta archivo en la confirmación de Nómina (KPI1) — quitado, confirmado contigo el
+  // 28-sep: lo único que importa ahí es la fecha real. El plan de trabajo (Emetrix) sí lo sigue
+  // pidiendo, no se tocó eso.
+  document.getElementById('promptFileRow').hidden = isNomina;
   resetPromptFileField();
   document.getElementById('namePrompt').classList.add('show');
   document.getElementById('promptConfirm').focus();

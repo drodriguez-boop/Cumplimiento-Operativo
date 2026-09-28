@@ -2607,6 +2607,14 @@ function applyRoleTabGating(){
   if(!allowed.includes(current)){
     switchTab(allowed[0]);
   }
+  // "Parámetros del calendario/Emetrix/gastos" (cómo se calculan los plazos) es información
+  // solo para Carlos (rol admin) — pedido el 28-sep: se quita para todos los demás perfiles,
+  // que solo necesitan confirmar/registrar entregas, no ver ni tocar cómo se arman las reglas.
+  const esAdmin = !!currentUser && currentUser.rol === 'admin';
+  ['configPanel','configPanelEmetrix','configPanelGastos'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.hidden = !esAdmin;
+  });
 }
 function stopDataSync(){
   dataUnsubscribers.forEach(fn=>{ try{ fn && fn(); }catch(e){ console.error(e); } });

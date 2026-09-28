@@ -1799,17 +1799,21 @@ function gastoFilaCuenta(cuentaId, mk, ctx){
     colSC = `<div class="ob-line"><span class="gastos-monto">Solicitado: ${fmtMoney(d.solicitado)}</span></div>
       <div class="ob-line"><span class="gastos-monto">Comprobado: ${d.comprobado===null?'—':fmtMoney(d.comprobado)}</span> <span class="chip ${pctCls}">${pctTxt}</span></div>`;
   }
-  if(d.solicitado===null){
-    colFact = `<span class="chip na">esperando datos de la contadora</span>`;
-  } else if(d.facturado===null){
+  // A partir del 28-sep ya NO se exige que llegue el dato de la contadora para poder capturar
+  // el facturado: el gerente/ejecutivo captura en cuanto lo sabe (no siempre coincide con cuándo
+  // sube su reporte la contadora). Solo la comparación "cumplido/no coincide" —y por lo tanto el
+  // KPI de Facturación— sigue esperando a que exista el "solicitado" de ese mes.
+  if(d.facturado===null){
     colFact = (ctx.puedeFactura && ctx.esMiCuenta)
       ? `<span class="chip pending">pendiente de capturar</span> <button class="action" onclick="openFacturadoPrompt('${cuentaId}','${mk}')">Capturar facturado</button>`
       : `<span class="chip na">le corresponde al gerente/ejecutivo</span>`;
   } else {
-    const ok = d.facturacionCumplida;
     const quien = d.rec.facturadoPor ? `<div class="confirmado-por">${d.rec.facturadoPor}</div>` : '';
     const editar = (ctx.puedeFactura && ctx.esMiCuenta) ? `<button class="link-btn" onclick="openFacturadoPrompt('${cuentaId}','${mk}')">Editar</button>` : '';
-    colFact = `<span class="chip ${ok?'ok':'bad'}">${ok?'✓ cumplido':'✕ no coincide'}</span> <span class="gastos-monto">${fmtMoney(d.facturado)}</span>${quien}${editar}`;
+    const estado = d.solicitado===null
+      ? `<span class="chip na">capturado — falta el dato de la contadora para comparar</span>`
+      : `<span class="chip ${d.facturacionCumplida?'ok':'bad'}">${d.facturacionCumplida?'✓ cumplido':'✕ no coincide'}</span>`;
+    colFact = `${estado} <span class="gastos-monto">${fmtMoney(d.facturado)}</span>${quien}${editar}`;
   }
   return {colSC, colFact, pctComprobacion:d.pctComprobacion, facturacionCumplida:d.facturacionCumplida};
 }

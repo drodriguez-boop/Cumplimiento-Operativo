@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root{
   --ink:#12151a; --ink-soft:#454b54; --paper:#f5f6fa; --paper-pure:#ffffff;
@@ -71,7 +72,6 @@ select{font-family:var(--font-sans);font-size:13px;padding:8px 12px;border:1px s
 .icon-btn:hover{border-color:var(--accent);color:var(--accent);}
 .icon-btn:disabled{opacity:.55;cursor:not-allowed;color:var(--muted);box-shadow:none;}
 .icon-btn:disabled:hover{border-color:var(--rule-strong);color:var(--muted);}
-.gasto-lock-note{font-family:var(--font-sans);font-size:11.5px;color:var(--warn);text-align:right;margin-top:6px;}
 .icon-btn:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 
 .avatar{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-sans);font-weight:700;font-size:12px;color:#fff;background:var(--accent);letter-spacing:.02em;}
@@ -164,25 +164,12 @@ button.action:disabled{opacity:.55;cursor:not-allowed;}
 .name-card .confirm{border:1px solid var(--accent);background:var(--accent);color:#fff;}
 .name-card .field{margin-bottom:12px;}
 
-.gasto-row{padding:12px 0;}
-.gasto-row:not(:last-child){border-bottom:1px dashed var(--rule);}
-.gasto-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:5px;}
-.semaforo{width:10px;height:10px;border-radius:50%;flex-shrink:0;display:inline-block;}
-.semaforo.ok{background:var(--positive);}
-.semaforo.pend{background:var(--warn);}
-.semaforo.bad{background:var(--critical);}
-.gasto-folio{font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:99px;padding:2px 9px;letter-spacing:.02em;}
-.gasto-tipo{font-weight:700;font-size:13px;}
-.saldo-pendiente{font-family:var(--font-sans);font-size:10.5px;color:var(--warn);margin-top:4px;font-weight:700;}
-.gasto-monto{font-family:var(--font-mono);font-size:12.5px;color:var(--ink-soft);}
-.gasto-fecha{font-family:var(--font-mono);font-size:11px;color:var(--muted-soft);}
-.gasto-desc{font-size:12px;color:var(--muted);margin-bottom:6px;}
-.gasto-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
-.status-pipe{display:flex;gap:4px;align-items:center;flex-wrap:wrap;}
-.status-pip{font-family:var(--font-sans);font-size:9.5px;font-weight:700;padding:3px 9px;border-radius:99px;background:var(--rule);border:none;color:var(--muted-soft);}
-.status-pip.done{background:var(--positive-soft);color:var(--positive);}
-.status-pip.current{background:var(--accent-soft);color:var(--accent);}
-.comprobante-ref{font-family:var(--font-mono);font-size:10px;color:var(--muted-soft);margin-top:2px;}
+/* Gastos (reconstruido 2-oct): ya no hay folio/semáforo/estatus por gasto individual — ahora
+   son montos agregados por cuenta y mes (solicitado/comprobado, que vienen del Excel de la
+   contadora, y facturado, que captura el gerente/ejecutivo). .gastos-monto solo da formato
+   monetario; el resto de la fila reutiliza .ob-line/.chip/.confirmado-por/.link-btn que ya
+   existían para Nómina. */
+.gastos-monto{font-family:var(--font-mono);font-weight:700;color:var(--ink);}
 
 details.config{background:var(--paper-pure);border:1px solid var(--rule);border-radius:14px;padding:4px 24px;margin-bottom:20px;box-shadow:var(--shadow-card);}
 details.config summary{cursor:pointer;padding:16px 0;font-size:13px;font-weight:700;color:var(--ink-soft);list-style:none;display:flex;align-items:center;gap:8px;}
@@ -540,34 +527,45 @@ details.config[open] summary::before{transform:rotate(90deg);}
     <summary>Parámetros de gastos</summary>
     <div class="config-grid">
       <div class="field">
-        <label>¿Cuándo se considera "comprobado a tiempo"?</label>
-        <div class="hint">Confirmado contigo: todo gasto pendiente de comprobar debe quedar comprobado antes de que cierre el mes en que se generó (último día calendario del mes, sin ajuste por fin de semana).</div>
+        <label>Fuente de los montos</label>
+        <div class="hint">El monto solicitado y el monto comprobado ya no se capturan a mano — salen del Excel que sube la contadora (o el admin). Si el archivo no trae ambos en un solo corte, se arma sumando lo que se suba como "pendiente sin factura" + "ya comprobado".</div>
       </div>
       <div class="field">
-        <label>Corte de pagos (informativo, no forma parte del % de KPI4)</label>
-        <div class="hint">Confirmado contigo: los pagos/reembolsos que requieren dispersión deben quedar cargados antes de las 11:00 del martes o del jueves — a las 12:00 de ese mismo día se autorizan y corren los pagos de esa ventana.</div>
+        <label>Regla de cumplimiento — Facturación a cliente</label>
+        <div class="hint">Confirmado contigo (2-oct): se marca cumplido solo si el monto que el gerente/ejecutivo factura al cliente coincide EXACTO con el monto solicitado de ese mes (según el archivo de la contadora).</div>
+      </div>
+      <div class="field">
+        <label>Cuentas del archivo que no están en la app</label>
+        <div class="hint pend">Confirmado contigo: se agrupan aparte como "Otros / gastos internos" (solo visible para admin) y no afectan ningún KPI. Avísame si algún nombre de cuenta del Excel no se está mapeando bien a las cuentas de la app.</div>
       </div>
     </div>
   </details>
 
-  <div id="gastosAlerta" class="alert-banner" hidden></div>
-
-  <section class="kpis kpis-single">
+  <section class="kpis">
     <div class="kpi-card">
-      <div class="kpi-label">% comprobación de gastos en tiempo</div>
-      <div class="kpi-formula">promedio de gastos comprobados antes del cierre de mes por gerente, peso igual entre los <span id="kpi4Total"></span> gerentes</div>
+      <div class="kpi-label">% comprobación de gastos</div>
+      <div class="kpi-formula">comprobado ÷ solicitado (según el archivo de la contadora) por gerente, peso igual entre los <span id="kpi4Total"></span> gerentes</div>
       <div class="kpi-row">
         <span class="kpi-value" id="kpi4Value">—</span>
         <span class="kpi-meta" id="kpi4Meta"></span>
       </div>
       <div class="bar"><div class="bar-fill" id="kpi4Bar" style="width:0%;background:var(--accent);"></div></div>
     </div>
+    <div class="kpi-card">
+      <div class="kpi-label">% de cuentas facturadas exacto al cliente</div>
+      <div class="kpi-formula">cuentas donde lo facturado al cliente coincide exacto con lo solicitado, peso igual entre los <span id="kpiFacturaTotal"></span> gerentes — indicador aparte, no forma parte del OKR ponderado</div>
+      <div class="kpi-row">
+        <span class="kpi-value" id="kpiFacturaValue">—</span>
+        <span class="kpi-meta" id="kpiFacturaMeta"></span>
+      </div>
+      <div class="bar"><div class="bar-fill" id="kpiFacturaBar" style="width:0%;background:var(--cat-purple);"></div></div>
+    </div>
   </section>
 
-  <div style="display:flex;flex-direction:column;align-items:flex-end;margin-bottom:14px;">
-    <button class="icon-btn" id="openGastoPrompt" type="button">+ Registrar gasto</button>
-    <div class="gasto-lock-note" id="gastoLockNote" hidden></div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:14px;" id="gastoUploadRow" hidden>
+    <button class="icon-btn" id="openGastoUploadPrompt" type="button">Subir reporte de gastos (Excel)</button>
   </div>
+  <div id="gastoUploadResumen" class="alert-banner" hidden></div>
 
   <div class="tablewrap">
     <div class="tablewrap-scroll">
@@ -575,7 +573,8 @@ details.config[open] summary::before{transform:rotate(90deg);}
         <thead>
           <tr>
             <th>Cuenta</th>
-            <th>Gastos del mes · estatus y comprobación</th>
+            <th>Solicitado / comprobado (archivo contadora)</th>
+            <th>Facturado a cliente</th>
           </tr>
         </thead>
         <tbody id="tbodyGastos"></tbody>
@@ -583,19 +582,18 @@ details.config[open] summary::before{transform:rotate(90deg);}
     </div>
   </div>
 
+  <div class="portada-errores" id="gastosOtrosInternos" hidden></div>
+
   <div class="notes" id="notesGastos">
-    <strong>Antes de usar esto en serio:</strong> al marcar "Comprobado" se registra si el comprobante es fiscal (CFDI) o no fiscal, más una referencia de texto (folio, RFC o nombre del archivo) y quién lo confirma — y ya se puede adjuntar el archivo real (PDF, Excel, Word, JPG o PNG, máx. 20 MB). Un archivo nuevo reemplaza al anterior para ese mismo gasto.
+    <strong>Antes de usar esto en serio:</strong> este apartado se rehízo por completo el 2-oct — ya no hay alta manual de gastos ni flujo Cargado→Aprobado→Pagado→Comprobado. Ahora la contadora (o el admin) sube el Excel de solicitudes de gastos, el sistema lee cada fila y junta el monto por cuenta y por mes (según la fecha de pago de cada fila) sin que haga falta elegir el mes a mano.
     <ul>
-      <li>El cierre de mes se calcula como el último día calendario del mes (no se ajusta si cae en fin de semana) — avísame si para gastos debe ser el último día hábil, como en nómina.</li>
-      <li>El flujo de estatus (Cargado → Aprobado → Pagado → Comprobado) hoy es el mismo para los 3 tipos de gasto (gasto por comprobar, reembolso con factura previa, pago a proveedor). Si alguno debe saltarse un paso (por ejemplo, si ya trae factura desde el inicio), dímelo y lo ajusto.</li>
-      <li><strong>Confirmado contigo:</strong> al registrar un gasto se indica si lo cargó un ejecutivo o el propio gerente. Si lo cargó un ejecutivo, la aprobación le corresponde al gerente de la cuenta; si lo cargó el gerente (cuentas sin ejecutivo), le corresponde a Carlos. El botón de "Marcar aprobado" ya indica a quién le toca. El paso de "Marcar pagado" es siempre de la contadora, quien también valida los documentos.</li>
-      <li>Como esta herramienta no tiene login real, estos roles son solo una guía visual (el botón dice a quién le toca) — cualquiera que abra la vista puede hacer clic, pero cada paso queda registrado con el nombre de quien lo confirmó (aprobó, pagó, comprobó), así que sí queda la trazabilidad completa.</li>
-      <li>El % de KPI4 se calcula por gerente (misma lógica que nómina y Emetrix): promedio de sus cuentas, peso igual entre todos los gerentes. Una cuenta sin gastos ese mes no cuenta ni a favor ni en contra.</li>
-      <li>El informe mensual por gerente hoy es esta misma vista (agrupada por gerente, con el detalle de cada gasto). Si quieres que además se pueda descargar como archivo aparte al cierre del mes, se puede agregar.</li>
-      <li><strong>Pendiente para la migración a Vercel:</strong> la alerta de comprobación pendiente (arriba) hoy solo se ve dentro de esta vista. El envío automático de esa misma alerta por WhatsApp o por correo queda anotado como pendiente — se agrega cuando esto tenga servidor propio.</li>
-      <li><strong>Confirmado contigo:</strong> los martes y jueves después de las 12:00 se cierra la captura de gastos nuevos (de cualquier tipo) hasta el día siguiente — el botón "+ Registrar gasto" se desactiva con un aviso. Esto no afecta aprobar, marcar pagado o marcar comprobado un gasto que ya estaba registrado; eso sigue disponible todos los días a cualquier hora.</li>
-      <li><strong>Folio por gasto:</strong> cada gasto recibe un folio automático "AAAA-MM-###" (mes en que se cargó + consecutivo, por ejemplo <code>2026-09-001</code>) para poder identificarlo y referenciarlo al comprobarlo. El consecutivo sigue subiendo mes con mes aunque cambies de vista. Los gastos ya registrados antes de este cambio se ven con un "—" en vez de folio.</li>
-      <li><strong>Confirmado contigo — comprobación parcial y semáforo:</strong> un gasto se puede comprobar en varios abonos (por ejemplo, de $1,000 comprobar $200 y después los $800 restantes) — "Marcar comprobado" pide cuánto se está comprobando en ese momento y se puede volver a usar hasta llegar al monto total. El punto de color junto al folio es el semáforo: verde cuando ya se comprobó por completo, amarillo mientras siga habiendo saldo pendiente de comprobar (aunque ya lleve un abono parcial), y rojo si ya venció el cierre del mes y sigue con saldo pendiente.</li>
+      <li><strong>Supuesto que falta confirmar con la contadora:</strong> el archivo de muestra que me diste ("REPORTE SOLICITUDES SIN FACTURA") solo trae gastos ya pagados que aún no tienen factura/comprobante — no trae, en el mismo corte, lo ya comprobado. Por eso el selector de "¿qué trae este archivo?" al subir deja elegir entre "pendiente sin factura", "ya comprobado con factura" o "el total del periodo" — mientras no se suba nunca el de "ya comprobado", el % de comprobación se queda en "sin datos" (no en 0%) para no reportar algo que en realidad no se ha medido.</li>
+      <li><strong>Monto solicitado</strong> = lo que venga como "total del periodo" si se sube ese archivo, o si no, la suma de "pendiente sin factura" + "ya comprobado" de esa cuenta y ese mes.</li>
+      <li>El mapeo de nombres de cuenta del Excel a las cuentas de la app es por una tabla fija (por ejemplo "SPIN MASTER" → Spinmaster, "ZURU TOYS" → Zuru, "COMERCIALIZADORA HISPANA" → Hispana) más coincidencia exacta para el resto. Lo que no matchea (gastos internos de Evolve, clientes que no están en esta herramienta, etc.) se agrupa en "Otros / gastos internos", visible solo para admin, debajo de la tabla.</li>
+      <li>El monto facturado a cliente lo captura el gerente/ejecutivo dueño de la cuenta (o admin) una vez que ya hay un monto solicitado de la contadora para ese mes — se puede editar después si hace falta corregirlo.</li>
+      <li>El % de comprobación (KPI4, ponderado 30% en el OKR) se calcula por gerente igual que los demás KPIs: promedio de sus cuentas, peso igual entre todos los gerentes. Una cuenta sin datos ese mes no cuenta ni a favor ni en contra.</li>
+      <li>El % de facturación exacta es un indicador aparte que pediste para dar seguimiento — no sustituye ni se suma al KPI4 oficial de comprobación, que sigue siendo el que pesa en el OKR.</li>
+      <li><strong>Pendiente:</strong> los registros del flujo anterior (gasto por gasto, con folio y comprobantes) se quedan guardados en la base de datos por si se necesitan de referencia, pero ya no se leen ni se muestran en ningún lado de esta vista.</li>
     </ul>
   </div>
 
@@ -643,39 +641,16 @@ details.config[open] summary::before{transform:rotate(90deg);}
 </div>
 
 <div class="name-prompt" id="gastoPrompt">
-  <div class="name-card" style="width:360px;">
-    <h3>Registrar gasto</h3>
-    <p>Cuenta, tipo y datos del gasto, reembolso o pago.</p>
+  <div class="name-card">
+    <h3 id="gastoPromptTitle">Capturar facturado a cliente</h3>
+    <p id="gastoPromptSub">Monto que se facturó al cliente este mes para esta cuenta, según el monto solicitado que trajo el archivo de la contadora.</p>
     <div class="field">
-      <label>Cuenta</label>
-      <select id="gastoCuenta"></select>
-    </div>
-    <div class="field">
-      <label>Tipo</label>
-      <select id="gastoTipo"></select>
-    </div>
-    <div class="field">
-      <label>¿Quién carga este gasto?</label>
-      <select id="gastoCargadoPor">
-        <option value="ejecutivo">Ejecutivo (lo aprueba el gerente de la cuenta)</option>
-        <option value="gerente">Gerente (lo aprueba Carlos)</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>Monto (MXN)</label>
-      <input type="number" id="gastoMonto" min="0" step="0.01" placeholder="0.00">
-    </div>
-    <div class="field">
-      <label>Descripción</label>
-      <input type="text" id="gastoDescripcion" placeholder="Ej. Gasolina ruteo semana 2">
-    </div>
-    <div class="field">
-      <label>Fecha del gasto</label>
-      <input type="date" id="gastoFecha">
+      <label>Monto facturado (MXN)</label>
+      <input type="number" id="gastoFacturadoMonto" min="0" step="0.01" placeholder="0.00">
     </div>
     <div class="field">
       <label>Tu nombre</label>
-      <input type="text" id="gastoRegistradoPor" placeholder="Quién lo registra">
+      <input type="text" id="gastoFacturadoPor" placeholder="Quién lo captura">
     </div>
     <div class="row">
       <button class="cancel" id="gastoCancel" type="button">Cancelar</button>
@@ -684,39 +659,31 @@ details.config[open] summary::before{transform:rotate(90deg);}
   </div>
 </div>
 
-<div class="name-prompt" id="comprobarPrompt">
+<div class="name-prompt" id="gastoUploadPrompt">
   <div class="name-card">
-    <h3 id="comprobarPromptTitle">Marcar comprobado</h3>
-    <p>Registra el tipo de comprobante, una referencia y, si quieres, el archivo real. Si el gasto se comprueba en varias partes, puedes registrar cada abono por separado — para un CFDI puedes adjuntar varios archivos a la vez (por ejemplo el XML y el PDF); volver a subir archivos para este gasto reemplaza al conjunto anterior.</p>
-    <p class="field-hint" id="comprobarResumen" style="font-family:var(--font-mono);font-size:11.5px;color:var(--muted);margin:-6px 0 14px;"></p>
+    <h3>Subir reporte de gastos</h3>
+    <p>Sube el Excel de la contadora. El sistema lee cada fila y junta el monto por cuenta y por mes (según la fecha de pago de cada fila) — no hace falta elegir el mes a mano; si el archivo trae varios meses, se actualizan todos.</p>
     <div class="field">
-      <label>Monto que estás comprobando ahora</label>
-      <input type="number" id="comprobarMonto" step="0.01" min="0">
-    </div>
-    <div class="field">
-      <label>Tipo de comprobante</label>
-      <select id="comprobarTipo">
-        <option value="fiscal">Fiscal (CFDI)</option>
-        <option value="no_fiscal">No fiscal</option>
+      <label>¿Qué trae este archivo?</label>
+      <select id="gastoUploadTipo">
+        <option value="pendiente_sin_factura">Gastos ya pagados que AÚN NO tienen factura/comprobante</option>
+        <option value="comprobado_con_factura">Gastos que YA tienen factura/comprobante</option>
+        <option value="solicitado_directo">El total de gastos del periodo (con o sin factura)</option>
       </select>
+      <div class="hint">Si no sabes cuál aplica, confírmalo con la contadora — puedes subir varios archivos, uno por cada tipo, y el sistema los junta por cuenta y mes.</div>
     </div>
     <div class="field">
-      <label>Referencia (folio, RFC, nombre del archivo — opcional)</label>
-      <input type="text" id="comprobarRef" placeholder="Ej. folio CFDI o nombre del archivo">
+      <label>Archivo (Excel)</label>
+      <input type="file" id="gastoUploadFile" accept=".xlsx,.xls">
+      <p class="file-error" id="gastoUploadError" hidden></p>
     </div>
     <div class="field">
       <label>Tu nombre</label>
-      <input type="text" id="comprobarPor" placeholder="Quién lo confirma">
-    </div>
-    <div class="field">
-      <label>Archivo(s) del comprobante (opcional)</label>
-      <input type="file" id="comprobarFile" accept=".pdf,.xml,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png" multiple>
-      <div class="file-hint" id="comprobarFileHint">PDF, XML (CFDI), Excel, Word, JPG o PNG · máx. 20 MB por archivo · hasta 5 archivos (por ejemplo XML + PDF de un CFDI). Si ya había archivos para este gasto, este conjunto los reemplaza.</div>
-      <p class="file-error" id="comprobarFileError" hidden></p>
+      <input type="text" id="gastoUploadPor" placeholder="Quién sube el archivo">
     </div>
     <div class="row">
-      <button class="cancel" id="comprobarCancel" type="button">Cancelar</button>
-      <button class="confirm" id="comprobarConfirm" type="button">Guardar</button>
+      <button class="cancel" id="gastoUploadCancel" type="button">Cancelar</button>
+      <button class="confirm" id="gastoUploadConfirm" type="button">Subir y procesar</button>
     </div>
   </div>
 </div>
@@ -964,10 +931,6 @@ function createSupabaseDb(client){
 const STORAGE_BUCKET = 'adjuntos-cumplimiento';
 const ACCEPTED_EXTS = ['pdf','xlsx','xls','doc','docx','jpg','jpeg','png'];
 const MAX_FILE_BYTES = 20*1024*1024;
-// Un CFDI mexicano son en realidad DOS archivos (XML + PDF), no uno — el comprobante de un
-// gasto acepta varios archivos (hasta MAX_GASTO_FILES) en vez de uno solo.
-const MAX_GASTO_FILES = 5;
-
 function extOf(filename){
   const m = /\.([a-zA-Z0-9]+)$/.exec(filename||'');
   return m ? m[1].toLowerCase() : '';
@@ -982,36 +945,8 @@ function validateFile(file){
   }
   return {ok:true, ext};
 }
-// Gastos acepta, además, .xml — un CFDI mexicano en realidad son DOS archivos (el XML, que es el
-// comprobante fiscal en sí, y el PDF de representación impresa), así que el comprobante de un
-// gasto necesita poder recibir XML aunque nómina/plan de trabajo (validateFile de arriba) no.
-const ACCEPTED_EXTS_GASTO = ACCEPTED_EXTS.concat(['xml']);
-function validateFileGasto(file){
-  const ext = extOf(file.name);
-  if(!ACCEPTED_EXTS_GASTO.includes(ext)){
-    return {ok:false, msg:'Tipo de archivo no permitido. Usa PDF, XML (CFDI), Excel (.xlsx/.xls), Word (.doc/.docx), JPG o PNG.'};
-  }
-  if(file.size > MAX_FILE_BYTES){
-    return {ok:false, msg:'El archivo pesa más de 20 MB, intenta con uno más ligero.'};
-  }
-  return {ok:true, ext};
-}
 function pathNomina(cuentaId, obKey, ext){ return `nomina/${cuentaId}/${obKey}.${ext}`; }
 function pathPlan(cuentaId, mesKey, ext){ return `plan/${cuentaId}/${mesKey}.${ext}`; }
-// Gastos: un comprobante puede traer varios archivos (típico CFDI = XML + PDF), así que la ruta
-// ya no es una sola por gasto — es una por archivo, indexada por orden de subida (0, 1, 2…) y
-// siempre con upsert:true, para que volver a comprobar el mismo gasto con el mismo número de
-// archivos en el mismo orden reemplace limpiamente cada uno.
-function pathGasto(cuentaId, gastoId, index, ext){ return `gastos/${cuentaId}/${gastoId}/${index}.${ext}`; }
-// Normaliza el campo de archivos de un gasto a un arreglo [{path, nombre}], sea cual sea su forma:
-// el nuevo esquema `archivos: [...]`, o el esquema anterior de un solo archivo
-// (`archivoPath`/`archivoNombre`) que ya existe en registros guardados antes de este cambio.
-function archivosOf(g){
-  if(!g) return [];
-  if(Array.isArray(g.archivos) && g.archivos.length) return g.archivos;
-  if(g.archivoPath) return [{path: g.archivoPath, nombre: g.archivoNombre || null}];
-  return [];
-}
 async function subirArchivo(file, path){
   try{
     const { error } = await supaClient.storage.from(STORAGE_BUCKET).upload(path, file, { upsert:true, contentType: file.type || undefined });
@@ -1042,40 +977,145 @@ function archivoBtnHtml(path){
   if(!path) return '';
   return `<button type="button" class="archivo-btn" onclick="verArchivo('${path}', this)">Ver archivo</button>`;
 }
-// Gastos: uno o varios archivos por comprobante (XML + PDF de un CFDI, por ejemplo) — un botón
-// "Ver archivo" por archivo, con el nombre original como texto del enlace cuando se conoce.
-function gastoArchivosHtml(g){
-  const archivos = archivosOf(g);
-  if(!archivos.length) return '';
-  return archivos.map((a, i)=>{
-    if(!a || !a.path) return '';
-    const label = a.nombre ? a.nombre : (archivos.length>1 ? `archivo ${i+1}` : 'archivo');
-    return `<button type="button" class="archivo-btn" onclick="verArchivo('${a.path}', this)">Ver ${label}</button>`;
-  }).join('');
-}
-async function borrarArchivosStorage(paths){
-  const list = (paths||[]).filter(Boolean);
-  if(!list.length) return;
-  try{ await supaClient.storage.from(STORAGE_BUCKET).remove(list); }
-  catch(e){ console.error('No se pudieron limpiar archivos viejos de storage', e); }
-}
-
 // --- KPI 3 · Emetrix ---
 let configEmetrix = {abrahamEmail:''};
 let cumplimientoEmetrixDocs = {};
 let selectedMes = null;
 
-// --- KPI 4 · Gastos ---
-const GASTO_TIPOS = ['gasto_comprobar','reembolso_factura','pago_proveedor'];
-const GASTO_TIPO_LABELS = {
-  gasto_comprobar: 'Gasto por comprobar',
-  reembolso_factura: 'Reembolso con factura previa',
-  pago_proveedor: 'Pago a proveedor',
-};
-const GASTO_ESTADOS = ['cargado','aprobado','pagado','comprobado'];
-const GASTO_ESTADO_LABELS = { cargado:'Cargado', aprobado:'Aprobado', pagado:'Pagado', comprobado:'Comprobado' };
-let gastosDocs = {}; // id -> data
+// --- KPI 4 · Gastos (rehecho 2-oct: ya no es alta manual de gasto por gasto — la contadora
+// sube un Excel y el sistema junta los montos por cuenta y por mes). Cada documento en
+// gastosDocs ahora vive bajo la llave docId(cuentaApp, mesKey) (mismo helper que nómina/plan de
+// trabajo), NO por id de gasto individual — los registros viejos (id "g_...") se quedan en la
+// tabla de Supabase sin que nada los lea, por si se quieren consultar de referencia.
+let gastosDocs = {}; // docId(cuenta, mes) -> data
 let selectedMesGastos = null; // 'YYYY-MM'
+
+function puedeSubirReporteGastos(){
+  return !!currentUser && (currentUser.rol==='contadora' || currentUser.rol==='admin');
+}
+function puedeCapturarFacturado(){
+  return !!currentUser && (currentUser.rol==='gerente' || currentUser.rol==='ejecutivo' || currentUser.rol==='admin');
+}
+
+// Cuenta que usa el Excel de la contadora -> id de cuenta de la app. Confirmado con el archivo
+// de muestra ADM_20260918_1.xlsx: el nombre de "Cuenta" en el Excel casi nunca es idéntico al de
+// la app (ej. "SPIN MASTER" vs "Spinmaster"), así que se normaliza (mayúsculas, sin acentos) y
+// se busca primero en este alias fijo, y si no aparece, por coincidencia exacta contra
+// CUENTA_IDS. Lo que no matchea ninguna de las dos formas cae en "Otros / gastos internos"
+// (gastos internos de Evolve, clientes que no están en esta herramienta, etc.) — avísame si
+// falta algún alias (Gifan, Multimarca, Hanes, Delonghi, Comercial, Piquio o Juguetimax no
+// aparecían en el archivo de muestra, así que solo tienen la coincidencia exacta por ahora).
+function normalizaCuentaTexto(s){
+  return String(s==null?'':s).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+}
+const ALIAS_CUENTA_GASTOS = {
+  'SPIN MASTER': 'Spinmaster',
+  'ZURU TOYS': 'Zuru',
+  'COMERCIALIZADORA HISPANA': 'Hispana',
+};
+const ALIAS_CUENTA_GASTOS_NORM = Object.fromEntries(
+  Object.entries(ALIAS_CUENTA_GASTOS).map(([k,v])=>[normalizaCuentaTexto(k), v])
+);
+const CUENTA_IDS_NORM = Object.fromEntries(CUENTA_IDS.map(id=>[normalizaCuentaTexto(id), id]));
+const OTROS_INTERNOS_ID = 'OTROS_INTERNOS';
+function mapCuentaGasto(nombreArchivo){
+  const norm = normalizaCuentaTexto(nombreArchivo);
+  if(ALIAS_CUENTA_GASTOS_NORM[norm]) return ALIAS_CUENTA_GASTOS_NORM[norm];
+  if(CUENTA_IDS_NORM[norm]) return CUENTA_IDS_NORM[norm];
+  return null; // cae en "Otros / gastos internos"
+}
+
+// Lee el Excel de la contadora: busca la fila de encabezados (la que trae "Cuenta" y "Monto",
+// dentro de las primeras 8 filas — en el archivo de muestra es la fila 3, con 2 filas de título
+// arriba) y junta el monto por cuenta (ya mapeada) y por mes calendario, usando la fecha de PAGO
+// de cada fila (confirmado contigo el 2-oct) para decidir a qué mes pertenece — un mismo archivo
+// puede traer varios meses a la vez y aquí se reparten todos, no solo uno.
+async function parseArchivoGastos(file){
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array', cellDates:true});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+
+  let headerRowIdx=-1, colCuenta=-1, colMonto=-1, colFechaPagado=-1;
+  for(let r=0; r<Math.min(8, rows.length); r++){
+    const row = rows[r]||[];
+    const idxCuenta = row.findIndex(v=>String(v==null?'':v).trim().toLowerCase()==='cuenta');
+    const idxMonto = row.findIndex(v=>String(v==null?'':v).trim().toLowerCase()==='monto');
+    if(idxCuenta>=0 && idxMonto>=0){
+      headerRowIdx=r; colCuenta=idxCuenta; colMonto=idxMonto;
+      colFechaPagado = row.findIndex(v=>String(v==null?'':v).trim().toLowerCase()==='fecha pagado');
+      break;
+    }
+  }
+  if(headerRowIdx===-1) throw new Error('No encontré las columnas "Cuenta" y "Monto" en el archivo — revisa que sea el mismo formato del reporte de la contadora.');
+
+  const porCuentaMes = {}; // cuentaApp|OTROS_INTERNOS -> mesKey -> {monto, filas}
+  let filasLeidas=0, filasSinFecha=0, filasSinMonto=0;
+  rows.slice(headerRowIdx+1).forEach(row=>{
+    if(!row || row.every(v=>v===null||v==='')) return;
+    const cuentaRaw = row[colCuenta];
+    if(cuentaRaw==null || String(cuentaRaw).trim()==='') return;
+    const montoRaw = row[colMonto];
+    const monto = typeof montoRaw==='number' ? montoRaw : parseFloat(String(montoRaw==null?'':montoRaw).replace(/[^0-9.\-]/g,''));
+    if(isNaN(monto)){ filasSinMonto++; return; }
+    const fechaRaw = colFechaPagado>=0 ? row[colFechaPagado] : null;
+    const fecha = fechaRaw instanceof Date ? fechaRaw : (fechaRaw ? new Date(fechaRaw) : null);
+    if(!fecha || isNaN(fecha)){ filasSinFecha++; return; }
+    const mk = mesKey(fecha.getFullYear(), fecha.getMonth()+1);
+    const cuentaApp = mapCuentaGasto(cuentaRaw) || OTROS_INTERNOS_ID;
+    const porMes = porCuentaMes[cuentaApp] || (porCuentaMes[cuentaApp] = {});
+    const slot = porMes[mk] || (porMes[mk] = {monto:0, filas:0});
+    slot.monto += monto; slot.filas++;
+    filasLeidas++;
+  });
+  return {porCuentaMes, filasLeidas, filasSinFecha, filasSinMonto};
+}
+
+// Monto solicitado/comprobado/facturado ya calculados para UNA cuenta y UN mes — de aquí sale
+// tanto la tabla de la pestaña Gastos como el % de KPI4 por mes calendario (ver
+// scoresGastosPorGerente). montoSolicitadoDirecto (si alguna vez se sube un archivo de "el total
+// del periodo") manda sobre la suma de pendiente+comprobado; si no hay ninguno de los tres, se
+// reporta "sin datos" (null), no 0 — para no confundir "no ha llegado el archivo" con "se
+// comprobó cero".
+function gastoDatosCuentaMes(cuentaId, mk){
+  const rec = gastosDocs[docId(cuentaId, mk)] || {};
+  const tieneDirecto = rec.montoSolicitadoDirecto!=null;
+  const tieneParcial = rec.montoPendienteComprobar!=null || rec.montoComprobado!=null;
+  const solicitado = tieneDirecto ? Number(rec.montoSolicitadoDirecto)
+    : tieneParcial ? (Number(rec.montoPendienteComprobar)||0) + (Number(rec.montoComprobado)||0)
+    : null;
+  const comprobado = rec.montoComprobado!=null ? Number(rec.montoComprobado) : null;
+  const pctComprobacion = (solicitado!=null && solicitado>0 && comprobado!=null) ? comprobado/solicitado : null;
+  const facturado = rec.facturado!=null ? Number(rec.facturado) : null;
+  const facturacionCumplida = (solicitado!=null && facturado!=null) ? Math.abs(facturado - solicitado) < 0.005 : null;
+  return {rec, solicitado, comprobado, pctComprobacion, facturado, facturacionCumplida};
+}
+// % de comprobación por gerente para un mes calendario (y,m) cualquiera — mismo patrón que
+// scoresMesPorGerente/scoresQuincenaPorGerente: promedio simple de las cuentas del gerente que sí
+// tengan dato ese mes (una cuenta sin datos no cuenta ni a favor ni en contra).
+function scoresGastosPorGerente(y, m){
+  const mk = mesKey(y, m);
+  const out = {};
+  visibleGerentes().forEach(g=>{
+    const vals = g.cuentas.map(cid=>gastoDatosCuentaMes(cid, mk).pctComprobacion).filter(v=>v!==null && v!==undefined);
+    out[g.nombre] = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+  });
+  return out;
+}
+// Meses que ofrece el selector de la pestaña Gastos — solo para navegar la vista (no hay
+// concepto de "cierre" aquí, a diferencia de nómina/plan de trabajo: un mes futuro simplemente
+// no tiene datos todavía).
+function buildMesesGastosView(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const list=[];
+  let y=today.getFullYear(), m=today.getMonth()+1-3;
+  if(m<1){ m+=12; y--; }
+  for(let i=0;i<7;i++){
+    list.push({key:mesKey(y,m), y, m, label: new Date(y,m-1,1).toLocaleString('es-MX',{month:'long',year:'numeric'})});
+    m++; if(m>12){m=1;y++;}
+  }
+  return list;
+}
 
 // --- Portada: guarda el último score (0..1 o null) de cada KPI por gerente, para el
 // medidor resumen. Cada render*() de su propia pestaña llena su parte de este objeto.
@@ -1306,22 +1346,7 @@ function ultimoMesCerrado(){
   return cerrados.length ? cerrados[cerrados.length-1] : meses[0];
 }
 
-// --- KPI 4 · Gastos: mes calendario, no día hábil (confirmado contigo: "antes de que cierre
-// el mes", sin mencionar ajuste por fin de semana — si debe ajustarse como en nómina, avísame).
-function cierreMes(y,m){ const d = new Date(y,m,0); d.setHours(23,59,59,999); return d; }
 function mesKey(y,m){ return `${y}-${String(m).padStart(2,'0')}`; }
-function buildMesesGastos(){
-  const today = new Date(); today.setHours(0,0,0,0);
-  const list=[];
-  let y=today.getFullYear(), m=today.getMonth()+1-2; // 2 meses atrás
-  if(m<1){ m+=12; y--; }
-  for(let i=0;i<5;i++){ // 2 atrás + actual + 2 adelante
-    const label = new Date(y,m-1,1).toLocaleString('es-MX',{month:'long',year:'numeric'});
-    list.push({key:mesKey(y,m), y, m, cierre:cierreMes(y,m), label});
-    m++; if(m>12){m=1;y++;}
-  }
-  return list;
-}
 
 // Construye el chip visual de KPI1 (entrega a tiempo) para UNA obligación puntual (quincenal o
 // semanal) — factorizado el 28-sep para que la tabla quincenal y la nueva tabla semanal
@@ -1755,185 +1780,88 @@ function renderEmetrix(){
 
 function fmtMoney(n){ return '$'+(Number(n)||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
+// Fila de UNA cuenta (columna "solicitado/comprobado" + columna "facturado") para la tabla de
+// Gastos — factorizado aparte para que renderGastos() se mantenga legible.
+function gastoFilaCuenta(cuentaId, mk, ctx){
+  const d = gastoDatosCuentaMes(cuentaId, mk);
+  let colSC, colFact;
+  if(d.solicitado===null){
+    colSC = `<span class="chip na">sin datos de la contadora</span>`;
+  } else {
+    const pctTxt = d.pctComprobacion===null ? 'sin datos de comprobación' : Math.round(d.pctComprobacion*100)+'% comprobado';
+    const pctCls = d.pctComprobacion===null ? 'na' : (d.pctComprobacion>=1?'ok':(d.pctComprobacion<=0?'bad':'mid'));
+    colSC = `<div class="ob-line"><span class="gastos-monto">Solicitado: ${fmtMoney(d.solicitado)}</span></div>
+      <div class="ob-line"><span class="gastos-monto">Comprobado: ${d.comprobado===null?'—':fmtMoney(d.comprobado)}</span> <span class="chip ${pctCls}">${pctTxt}</span></div>`;
+  }
+  if(d.solicitado===null){
+    colFact = `<span class="chip na">esperando datos de la contadora</span>`;
+  } else if(d.facturado===null){
+    colFact = (ctx.puedeFactura && ctx.esMiCuenta)
+      ? `<span class="chip pending">pendiente de capturar</span> <button class="action" onclick="openFacturadoPrompt('${cuentaId}','${mk}')">Capturar facturado</button>`
+      : `<span class="chip na">le corresponde al gerente/ejecutivo</span>`;
+  } else {
+    const ok = d.facturacionCumplida;
+    const quien = d.rec.facturadoPor ? `<div class="confirmado-por">${d.rec.facturadoPor}</div>` : '';
+    const editar = (ctx.puedeFactura && ctx.esMiCuenta) ? `<button class="link-btn" onclick="openFacturadoPrompt('${cuentaId}','${mk}')">Editar</button>` : '';
+    colFact = `<span class="chip ${ok?'ok':'bad'}">${ok?'✓ cumplido':'✕ no coincide'}</span> <span class="gastos-monto">${fmtMoney(d.facturado)}</span>${quien}${editar}`;
+  }
+  return {colSC, colFact, pctComprobacion:d.pctComprobacion, facturacionCumplida:d.facturacionCumplida};
+}
+
 function renderGastos(){
-  const today = new Date(); today.setHours(0,0,0,0);
   const GERENTES_VIEW = visibleGerentes();
-  const meses = buildMesesGastos();
+  const meses = buildMesesGastosView();
 
   const sel = document.getElementById('mesGastosSelect');
   if(!selectedMesGastos){
     const now = new Date();
     selectedMesGastos = mesKey(now.getFullYear(), now.getMonth()+1);
   }
-  if(!meses.find(x=>x.key===selectedMesGastos)) selectedMesGastos = meses[2].key; // fallback: mes actual
-  sel.innerHTML = meses.map(x=>`<option value="${x.key}" ${x.key===selectedMesGastos?'selected':''}>${x.label} — cierre ${fmtShort(x.cierre)}</option>`).join('');
-  const per = meses.find(x=>x.key===selectedMesGastos);
+  if(!meses.find(x=>x.key===selectedMesGastos)) selectedMesGastos = meses[3].key; // fallback: mes actual
+  sel.innerHTML = meses.map(x=>`<option value="${x.key}" ${x.key===selectedMesGastos?'selected':''}>${x.label}</option>`).join('');
+  const mk = selectedMesGastos;
 
-  // Junta los gastos de este mes (por fecha del gasto) agrupados por cuenta.
-  const porCuenta = {};
-  CUENTAS.forEach(c=>{ porCuenta[c.id] = []; });
-  Object.entries(gastosDocs).forEach(([id,g])=>{
-    if(!g.fechaCarga || g.fechaCarga.slice(0,7) !== per.key) return;
-    if(!porCuenta[g.cuenta]) porCuenta[g.cuenta] = [];
-    porCuenta[g.cuenta].push({id, ...g});
-  });
+  const uploadRow = document.getElementById('gastoUploadRow');
+  if(uploadRow) uploadRow.hidden = !puedeSubirReporteGastos();
 
-  // --- Alerta de comprobación pendiente: se prende cuando faltan 3 días o menos para el cierre
-  // de este mes (o ya pasó) y siguen existiendo gastos sin comprobar. Solo visibilidad — el envío
-  // automático por WhatsApp o correo queda pendiente para cuando esto se migre a Vercel.
-  {
-    const diasParaCierre = Math.ceil((per.cierre - today) / 86400000);
-    const pendientesPorGerente = {};
-    GERENTES_VIEW.forEach(ger=>{
-      let monto = 0, count = 0;
-      ger.cuentas.forEach(cid=>{
-        (porCuenta[cid]||[]).forEach(gto=>{
-          if(gto.estado !== 'comprobado'){ monto += Number(gto.monto)||0; count++; }
-        });
-      });
-      if(count>0) pendientesPorGerente[ger.nombre] = {monto, count};
-    });
-    const alertEl = document.getElementById('gastosAlerta');
-    const nombresPend = Object.keys(pendientesPorGerente);
-    if(diasParaCierre<=3 && nombresPend.length>0){
-      const vencido = diasParaCierre < 0;
-      const totalMonto = nombresPend.reduce((s,n)=>s+pendientesPorGerente[n].monto,0);
-      const totalCount = nombresPend.reduce((s,n)=>s+pendientesPorGerente[n].count,0);
-      const titulo = vencido
-        ? `Ya cerró ${per.label} (cierre ${fmtShort(per.cierre)}) y hay comprobaciones pendientes`
-        : `Faltan ${diasParaCierre} día${diasParaCierre===1?'':'s'} para el cierre de ${per.label} (${fmtShort(per.cierre)})`;
-      const filas = nombresPend.map(n=>`<li><strong>${n}:</strong> ${pendientesPorGerente[n].count} gasto${pendientesPorGerente[n].count>1?'s':''} sin comprobar · ${fmtMoney(pendientesPorGerente[n].monto)}</li>`).join('');
-      alertEl.hidden = false;
-      alertEl.className = 'alert-banner ' + (vencido ? 'critical' : 'warn');
-      alertEl.innerHTML = `<span class="alert-icon">${vencido?'⛔':'⚠️'}</span><div>
-        <strong>${titulo}</strong>
-        Total pendiente: ${totalCount} gasto${totalCount>1?'s':''} · ${fmtMoney(totalMonto)}
-        <ul>${filas}</ul>
-      </div>`;
-    } else {
-      alertEl.hidden = true;
-      alertEl.innerHTML = '';
-    }
-  }
-
-  function scoreOf(g){
-    if(g.estado==='comprobado'){
-      const ok = new Date(g.fechaComprobado) <= per.cierre;
-      return ok ? 1 : 0;
-    }
-    if(today > per.cierre) return 0; // venció sin comprobar
-    return null; // aún dentro del mes, no evaluable todavía
-  }
-
-  const cuentaScores = {};
-  const cuentaHtml = {};
-  CUENTAS.forEach(c=>{
-    const gastos = porCuenta[c.id]||[];
-    gastos.sort((a,b)=> (a.fechaCarga||'').localeCompare(b.fechaCarga||''));
-    const scores = gastos.map(scoreOf).filter(s=>s!==null);
-    cuentaScores[c.id] = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : null;
-
-    if(gastos.length===0){
-      cuentaHtml[c.id] = `<div class="gasto-row" style="color:var(--muted-soft);font-size:12px;">Sin gastos registrados este mes.</div>`;
-      return;
-    }
-    cuentaHtml[c.id] = gastos.map(g=>{
-      const idx = GASTO_ESTADOS.indexOf(g.estado);
-      const pips = GASTO_ESTADOS.map((es,i)=>`<span class="status-pip ${i<idx?'done':(i===idx?'current':'')}">${GASTO_ESTADO_LABELS[es]}</span>`).join('');
-      const rolAprobador = g.cargadoPor==='gerente' ? 'Carlos' : 'Gerente';
-      let accion = '';
-      if(g.estado==='cargado') accion = `<button class="action" onclick="openGastoAprobarPrompt('${g.id}','${rolAprobador}')">Marcar aprobado (${rolAprobador})</button>`;
-      else if(g.estado==='aprobado') accion = `<button class="action" onclick="openGastoPagarPrompt('${g.id}')">Marcar pagado (Contadora)</button>`;
-      else if(g.estado==='pagado') accion = `<button class="action" onclick="openComprobarPrompt('${g.id}')">Marcar comprobado</button>`;
-
-      let historial = '';
-      if(g.aprobadoPor) historial += `<div class="confirmado-por">Aprobado por: ${g.aprobadoPor}</div>`;
-      if(g.pagadoPor) historial += `<div class="confirmado-por">Pagado/validado por: ${g.pagadoPor}</div>`;
-
-      // Semáforo: verde = comprobado por completo, amarillo = todavía tiene saldo pendiente de
-      // comprobar (aunque ya se haya comprobado una parte), rojo = ya venció el cierre de mes y
-      // sigue con saldo pendiente. "Completo" se define por el estado del gasto (se pone
-      // 'comprobado' solo cuando la suma de abonos alcanza el monto total).
-      const completo = g.estado==='comprobado';
-      const vencido = !completo && today > per.cierre;
-      const monto = Number(g.monto)||0;
-      const montoComprobado = Number(g.montoComprobado)||0;
-      const saldoPendiente = Math.max(0, monto - montoComprobado);
-      const semaforoClass = completo ? 'ok' : (vencido ? 'bad' : 'pend');
-      const semaforoTitle = completo ? 'Comprobado por completo' : (vencido ? `Venció sin comprobar — saldo pendiente: ${fmtMoney(saldoPendiente)}` : `Saldo pendiente de comprobar: ${fmtMoney(saldoPendiente)}`);
-
-      let comprobantesHtml = '';
-      if(Array.isArray(g.comprobantes) && g.comprobantes.length){
-        comprobantesHtml = g.comprobantes.map(cp=>{
-          const tipoLabel = cp.tipo==='no_fiscal' ? 'No fiscal' : 'Fiscal (CFDI)';
-          return `<div class="confirmado-por">Comprobó ${fmtMoney(cp.monto)} — ${tipoLabel}${cp.ref?' · Ref: '+cp.ref:''} · ${cp.por}</div>`;
-        }).join('');
-      } else if(g.estado==='comprobado' && (g.comprobanteTipo || g.comprobanteRef || g.comprobadoPor)){
-        // Gasto comprobado antes de habilitar la comprobación parcial — se muestra con el
-        // formato anterior (un solo comprobante) en vez de la lista de abonos.
-        const tipoLabel = g.comprobanteTipo==='no_fiscal' ? 'No fiscal' : 'Fiscal (CFDI)';
-        comprobantesHtml = `<div class="confirmado-por">Comprobante: ${tipoLabel}${g.comprobanteRef?' · Ref: '+g.comprobanteRef:''}${g.comprobadoPor?' · '+g.comprobadoPor:''}</div>`;
-      }
-
-      let resultado = '';
-      if(g.estado==='comprobado'){
-        const ok = new Date(g.fechaComprobado) <= per.cierre;
-        resultado = `<span class="chip ${ok?'ok':'bad'}">${ok?'✓ a tiempo':'✕ fuera de tiempo'}</span>`;
-      } else if(today > per.cierre){
-        resultado = `<span class="chip bad">✕ venció sin comprobar</span>`;
-      }
-      if(!completo && montoComprobado>0){
-        resultado += `<div class="saldo-pendiente">Comprobado ${fmtMoney(montoComprobado)} de ${fmtMoney(monto)} · Pendiente ${fmtMoney(saldoPendiente)}</div>`;
-      }
-
-      return `<div class="gasto-row">
-        <div class="gasto-head">
-          <span class="semaforo ${semaforoClass}" title="${semaforoTitle}"></span>
-          <span class="gasto-folio">${g.folio || '—'}</span>
-          <span class="gasto-tipo">${GASTO_TIPO_LABELS[g.tipo]||g.tipo}</span>
-          <span class="gasto-monto">${fmtMoney(g.monto)}</span>
-          <span class="gasto-fecha">${g.fechaCarga}</span>
-          <span class="ob-tag">Cargó: ${g.cargadoPor==='gerente'?'Gerente':'Ejecutivo'}${g.registradoPor?' ('+g.registradoPor+')':''}</span>
-        </div>
-        ${g.descripcion?`<div class="gasto-desc">${g.descripcion}</div>`:''}
-        <div class="status-pipe">${pips}</div>
-        ${historial}
-        ${comprobantesHtml}
-        <div class="gasto-actions">${accion}${gastoArchivosHtml(g)}${resultado}</div>
-      </div>`;
-    }).join('');
-  });
+  const puedeFactura = puedeCapturarFacturado();
+  const misCuentas = currentCuentaFilter();
 
   const pesoGerente = 100/GERENTES_VIEW.length;
-  let kpiSum=0, kpiEvalGerentes=0;
+  let kpi4Sum=0, kpi4Eval=0, factSum=0, factEval=0;
   const gerenteBlocks = GERENTES_VIEW.map(g=>{
-    const scores = g.cuentas.map(cid=>cuentaScores[cid]).filter(s=>s!==null);
-    const gScore = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : null;
-    if(gScore!==null){ kpiSum+=gScore; kpiEvalGerentes++; }
-    setGerenteScore(g.nombre, 'kpi4', gScore);
+    const filas = g.cuentas.map(cid=>{
+      const esMiCuenta = misCuentas===null || misCuentas.includes(cid);
+      return {cid, f: gastoFilaCuenta(cid, mk, {puedeFactura, esMiCuenta})};
+    });
+    const pctVals = filas.map(x=>x.f.pctComprobacion).filter(v=>v!==null);
+    const gScore4 = pctVals.length ? pctVals.reduce((a,b)=>a+b,0)/pctVals.length : null;
+    const factVals = filas.map(x=>x.f.facturacionCumplida).filter(v=>v!==null).map(v=>v?1:0);
+    const gScoreFact = factVals.length ? factVals.reduce((a,b)=>a+b,0)/factVals.length : null;
+    if(gScore4!==null){ kpi4Sum+=gScore4; kpi4Eval++; }
+    if(gScoreFact!==null){ factSum+=gScoreFact; factEval++; }
+    setGerenteScore(g.nombre, 'kpi4', gScore4);
     const cls = s=>s===null?'na':(s>=1?'ok':(s<=0?'bad':'mid'));
-    const totalMonto = g.cuentas.reduce((sum,cid)=> sum + (porCuenta[cid]||[]).reduce((s,x)=>s+(Number(x.monto)||0),0), 0);
-    const totalGastos = g.cuentas.reduce((sum,cid)=> sum + (porCuenta[cid]||[]).length, 0);
     const header = `<tr class="gerente-row">
-      <td colspan="2">
+      <td colspan="3">
         <span class="gerente-name">${g.nombre}</span>
-        <span class="gerente-peso">${pesoGerente.toFixed(1)}% del KPI · ${totalGastos} gasto${totalGastos!==1?'s':''} · ${fmtMoney(totalMonto)}</span>
-        <span class="gerente-score ${cls(gScore)}">KPI4: ${gScore===null?'sin datos':Math.round(gScore*100)+'%'}</span>
+        <span class="gerente-peso">${pesoGerente.toFixed(1)}% del KPI · ${g.cuentas.length} cuenta${g.cuentas.length>1?'s':''}</span>
+        <span class="gerente-score ${cls(gScore4)}">Comprobación: ${gScore4===null?'sin datos':Math.round(gScore4*100)+'%'}</span>
+        <span class="gerente-score ${cls(gScoreFact)}">Facturación: ${gScoreFact===null?'sin datos':Math.round(gScoreFact*100)+'%'}</span>
       </td>
     </tr>`;
-    const cuentaRows = g.cuentas.map(cid=>{
+    const cuentaRows = filas.map(({cid,f})=>{
       const c = CUENTA_BY_ID[cid];
-      return `<tr><td><span class="cuenta-name">${c.id}</span></td><td>${cuentaHtml[cid]}</td></tr>`;
+      return `<tr><td><span class="cuenta-name">${c.id}</span></td><td>${f.colSC}</td><td>${f.colFact}</td></tr>`;
     }).join('');
     return header + cuentaRows;
   }).join('');
-
   document.getElementById('tbodyGastos').innerHTML = gerenteBlocks;
 
   const kpi4El = document.getElementById('kpi4Value');
   kpi4El.classList.remove('na');
-  if(kpiEvalGerentes>0){
-    const pct = Math.round((kpiSum/kpiEvalGerentes)*100);
+  if(kpi4Eval>0){
+    const pct = Math.round((kpi4Sum/kpi4Eval)*100);
     kpi4El.textContent = pct+'%';
     document.getElementById('kpi4Bar').style.width = pct+'%';
   } else {
@@ -1941,43 +1869,46 @@ function renderGastos(){
     kpi4El.classList.add('na');
     document.getElementById('kpi4Bar').style.width = '0%';
   }
-  document.getElementById('kpi4Meta').textContent = `${kpiEvalGerentes} / ${GERENTES_VIEW.length} gerentes evaluados`;
+  document.getElementById('kpi4Meta').textContent = `${kpi4Eval} / ${GERENTES_VIEW.length} gerentes evaluados`;
   document.getElementById('kpi4Total').textContent = GERENTES_VIEW.length;
 
-  updateGastoLockUI();
-}
-
-// --- Cierre de captura de gastos: confirmado contigo — los martes y jueves, después de las
-// 12:00, no se puede registrar NINGÚN gasto nuevo (por comprobar, reembolso o pago a proveedor)
-// hasta el día siguiente. Esto solo bloquea el alta de gastos nuevos — aprobar, marcar pagado o
-// marcar comprobado un gasto ya registrado sigue disponible siempre, sin importar el día/hora.
-function gastosRegistroBloqueado(){
-  const now = new Date();
-  const dia = now.getDay(); // 2 = martes, 4 = jueves
-  if(dia !== 2 && dia !== 4) return false;
-  return (now.getHours() + now.getMinutes()/60) >= 12;
-}
-function updateGastoLockUI(){
-  const btn = document.getElementById('openGastoPrompt');
-  const note = document.getElementById('gastoLockNote');
-  if(!btn || !note) return;
-  if(gastosRegistroBloqueado()){
-    btn.disabled = true;
-    note.hidden = false;
-    note.textContent = 'Cerrado: los martes y jueves después de las 12:00 no se pueden registrar gastos nuevos — se abre de nuevo mañana.';
+  const kpiFEl = document.getElementById('kpiFacturaValue');
+  kpiFEl.classList.remove('na');
+  if(factEval>0){
+    const pct = Math.round((factSum/factEval)*100);
+    kpiFEl.textContent = pct+'%';
+    document.getElementById('kpiFacturaBar').style.width = pct+'%';
   } else {
-    btn.disabled = false;
-    note.hidden = true;
-    note.textContent = '';
+    kpiFEl.textContent = 'sin datos';
+    kpiFEl.classList.add('na');
+    document.getElementById('kpiFacturaBar').style.width = '0%';
+  }
+  document.getElementById('kpiFacturaMeta').textContent = `${factEval} / ${GERENTES_VIEW.length} gerentes evaluados`;
+  document.getElementById('kpiFacturaTotal').textContent = GERENTES_VIEW.length;
+
+  // "Otros / gastos internos" — cuentas del Excel que no matchearon ninguna cuenta de la app
+  // (gastos internos de Evolve, clientes que no están en esta herramienta). Solo admin, y no
+  // participa de ningún KPI — pedido del 2-oct.
+  const otrosEl = document.getElementById('gastosOtrosInternos');
+  if(otrosEl){
+    if(currentUser && currentUser.rol==='admin'){
+      const d = gastoDatosCuentaMes(OTROS_INTERNOS_ID, mk);
+      otrosEl.hidden = false;
+      otrosEl.innerHTML = d.solicitado===null
+        ? `<div class="mes-historial-label">Otros / gastos internos (sin cuenta en la app)</div><div class="portada-errores-empty">Sin datos este mes.</div>`
+        : `<div class="mes-historial-label">Otros / gastos internos (sin cuenta en la app)</div><div class="mes-historial"><div class="mes-historial-row"><span class="mes-historial-mes">Total del mes</span><span class="mes-historial-pct">${fmtMoney(d.solicitado)}</span></div></div>`;
+    } else {
+      otrosEl.hidden = true;
+      otrosEl.innerHTML = '';
+    }
   }
 }
-setInterval(updateGastoLockUI, 30000);
 
 const PORTADA_KPIS = [
   {key:'kpi1', label:'Corte quincenal e incidencias en tiempo'},
   {key:'kpi2', label:'Cero errores de nómina'},
   {key:'kpi3', label:'Ruteo y plan de trabajo en Emetrix'},
-  {key:'kpi4', label:'Comprobación de gastos en tiempo'},
+  {key:'kpi4', label:'Comprobación de gastos'},
 ];
 
 // Ponderación de este OKR (Proceso administrativo operativo) entre sus 4 KPIs — pesos reales
@@ -2025,8 +1956,10 @@ function gaugeSVG(score, size){
 // así que sus resultados pisan (a propósito) lo que render()/renderEmetrix() hayan dejado ahí
 // para SU PROPIO periodo seleccionado — la Portada necesita una foto estable del cumplimiento
 // general, no depender de en qué quincena/mes se haya quedado alguien navegando en otra pestaña.
-// KPI4 (gastos) no se toca aquí — sigue viniendo de renderGastos(), no se ha pedido este mismo
-// tratamiento todavía.
+// KPI4 (gastos) tampoco se toca aquí — ya no depende de "cerrado/no cerrado" como los demás
+// (un mes sin datos de la contadora simplemente da null), así que sale directo de
+// scoresMesCalendarioPorGerente() para el mes que esté elegido en el selector de Periodo, igual
+// que kpi1-3 (ver más abajo) — ya no del snapshot ad-hoc que armaba renderGastos().
 function actualizarScoresPortada(){
   const q = ultimaQuincenaCerrada();
   const scoresQ = scoresQuincenaPorGerente(q);
@@ -2040,18 +1973,20 @@ function actualizarScoresPortada(){
   });
 }
 
-// KPI1/KPI2/KPI3 por gerente para un MES CALENDARIO cualquiera (y,m) — sin promediar entre
+// KPI1/KPI2/KPI3/KPI4 por gerente para un MES CALENDARIO cualquiera (y,m) — sin promediar entre
 // gerentes todavía. KPI1/KPI2 combinan las quincenas cuyo pago cae dentro de ese mes (y ya
-// pasó); KPI3 usa el plan cuyo plazo cierra ese mes (si ya venció). KPI4/gastos no participa
-// todavía (sigue en pausa). Es la base tanto del selector de "Periodo" de las tarjetas de arriba
-// como del historial de "Cumplimiento por mes" de abajo — pedido del 28-sep: poder elegir qué
-// mes revisar, en vez de que la Portada solo muestre siempre el último ya cerrado.
+// pasó); KPI3 usa el plan cuyo plazo cierra ese mes (si ya venció); KPI4 (comprobación de
+// gastos, ver scoresGastosPorGerente) no tiene concepto de "cerrado" — un mes sin datos de la
+// contadora todavía simplemente da null, sin importar si ya pasó o no. Es la base tanto del
+// selector de "Periodo" de las tarjetas de arriba como del historial de "Cumplimiento por mes"
+// de abajo — pedido del 28-sep: poder elegir qué mes revisar, en vez de que la Portada solo
+// muestre siempre el último ya cerrado.
 function scoresMesCalendarioPorGerente(y, m){
   const hoy = new Date(); hoy.setHours(0,0,0,0);
   const quincenas = buildQuincenas().filter(q=>q.pago.getFullYear()===y && q.pago.getMonth()+1===m && q.pago<=hoy);
   const meses = buildMeses();
   const out = {};
-  visibleGerentes().forEach(g=>{ out[g.nombre] = {kpi1:null, kpi2:null, kpi3:null}; });
+  visibleGerentes().forEach(g=>{ out[g.nombre] = {kpi1:null, kpi2:null, kpi3:null, kpi4:null}; });
   const k1acc = {}, k2acc = {};
   quincenas.forEach(q=>{
     const s = scoresQuincenaPorGerente(q);
@@ -2070,21 +2005,23 @@ function scoresMesCalendarioPorGerente(y, m){
     const s3 = scoresMesPorGerente(per);
     Object.keys(out).forEach(nombre=>{ if(s3[nombre]!==undefined) out[nombre].kpi3 = s3[nombre]; });
   }
+  const s4 = scoresGastosPorGerente(y, m);
+  Object.keys(out).forEach(nombre=>{ if(s4[nombre]!==undefined) out[nombre].kpi4 = s4[nombre]; });
   return out;
 }
-// Reduce el resultado de scoresMesCalendarioPorGerente a un solo {kpi1,kpi2,kpi3}: para un
+// Reduce el resultado de scoresMesCalendarioPorGerente a un solo {kpi1,kpi2,kpi3,kpi4}: para un
 // gerente puntual, directo; para "__todos__", promedio simple entre quienes sí tengan dato de
 // cada KPI ese mes (mismo criterio de siempre: no exigir que todos lo tengan para reportar algo).
 function agregarKpisPorGerente(porGerente, seleccion){
   if(seleccion === '__todos__'){
     const out = {};
-    ['kpi1','kpi2','kpi3'].forEach(k=>{
+    ['kpi1','kpi2','kpi3','kpi4'].forEach(k=>{
       const vals = Object.values(porGerente).map(o=>o[k]).filter(v=>v!==null && v!==undefined);
       out[k] = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
     });
     return out;
   }
-  return porGerente[seleccion] || {kpi1:null, kpi2:null, kpi3:null};
+  return porGerente[seleccion] || {kpi1:null, kpi2:null, kpi3:null, kpi4:null};
 }
 // Opciones del selector de Periodo: los últimos `n` meses calendario, más reciente primero.
 // Rango de meses del selector de Periodo — pedido del 28-sep: dejarlo fijo a agosto-diciembre
@@ -2119,9 +2056,7 @@ function renderPortadaActividad(seleccion){
   const filas = [
     {label:'Nómina', vals: actividadPortadaFila(seleccion, ['kpi1','kpi2'])},
     {label:'Plan de trabajo', vals: actividadPortadaFila(seleccion, ['kpi3'])},
-    // Gastos (KPI4) todavía no tiene parámetros de cumplimiento por mes (sigue en pausa, ver
-    // pestaña Gastos) — se muestra N/D en las 5 columnas hasta que eso se defina.
-    {label:'Gastos', vals: PORTADA_MESES_FIJOS.map(()=>null)},
+    {label:'Gastos', vals: actividadPortadaFila(seleccion, ['kpi4'])},
   ];
   const celda = v=>{
     const cls = v===null ? 'na' : (v>=1?'ok':(v<=0?'bad':'mid'));
@@ -2187,9 +2122,10 @@ function renderPortadaErrores(seleccion, py, pm){
 // Fila de tarjetas arriba de la Portada (pedido de Deisa: mismo estilo de tarjeta de color que
 // ya usan Nómina/Emetrix/Gastos). Dos selectores la controlan: Gerente (o "Todos los gerentes",
 // que promedia entre quienes sí tienen dato — nunca exige que todos lo tengan) y Periodo (qué
-// mes calendario revisar, dentro del rango fijo agosto-diciembre 2026). KPI1/KPI2/KPI3 salen de
-// scoresMesCalendarioPorGerente() para el mes elegido; KPI4/gastos todavía no participa de este
-// selector (sigue en pausa) y se toma del snapshot que ya arma renderGastos().
+// mes calendario revisar, dentro del rango fijo agosto-diciembre 2026). KPI1/KPI2/KPI3/KPI4 —
+// incluido gastos, desde el 2-oct — salen todos de scoresMesCalendarioPorGerente() para el mes
+// elegido en el selector de Periodo, sin depender de en qué mes haya quedado el selector propio
+// de la pestaña Gastos.
 // Debajo de las tarjetas: el desglose de errores de nómina (solo admin) y la tabla "Actividad"
 // (Nómina/Plan de trabajo/Gastos x mes) para el gerente elegido.
 function renderPortadaStats(){
@@ -2218,10 +2154,6 @@ function renderPortadaStats(){
   const seleccionG = selG.value || opciones[0];
   const [py, pm] = (selP.value || periodoPortadaDefault()).split('-').map(Number);
   const scoresObj = agregarKpisPorGerente(scoresMesCalendarioPorGerente(py, pm), seleccionG);
-  const kpi4Vals = seleccionG === '__todos__'
-    ? GERENTES_VIEW.map(g=>(gerenteKpiScores[g.nombre]||{}).kpi4).filter(v=>v!==undefined && v!==null)
-    : [(gerenteKpiScores[seleccionG]||{}).kpi4].filter(v=>v!==undefined && v!==null);
-  scoresObj.kpi4 = kpi4Vals.length ? kpi4Vals.reduce((a,b)=>a+b,0)/kpi4Vals.length : null;
   cont.innerHTML = PORTADA_KPIS.map(k=>{
     const score = scoresObj[k.key] !== undefined ? scoresObj[k.key] : null;
     const pctLabel = score===null ? 'N/D' : Math.round(score*100)+'%';
@@ -2525,206 +2457,109 @@ document.getElementById('toggleConfigGastos').addEventListener('click', ()=>{
   const p = document.getElementById('configPanelGastos'); p.open = !p.open;
 });
 
-document.getElementById('openGastoPrompt').addEventListener('click', ()=>{
-  document.getElementById('gastoCuenta').innerHTML = visibleCuentaIds().map(id=>`<option value="${id}">${id}</option>`).join('');
-  document.getElementById('gastoTipo').innerHTML = GASTO_TIPOS.map(t=>`<option value="${t}">${GASTO_TIPO_LABELS[t]}</option>`).join('');
-  document.getElementById('gastoMonto').value='';
-  document.getElementById('gastoDescripcion').value='';
-  document.getElementById('gastoFecha').value = iso(new Date());
-  document.getElementById('gastoRegistradoPor').value='';
-  document.getElementById('gastoCargadoPor').value='ejecutivo';
+// Captura/edición del monto facturado a cliente — le toca al gerente/ejecutivo dueño de la
+// cuenta (o admin), solo una vez que ya hay un monto solicitado de la contadora para ese mes.
+let pendingFacturado = null;
+function openFacturadoPrompt(cuentaId, mk){
+  pendingFacturado = {cuenta:cuentaId, mes:mk};
+  const rec = gastosDocs[docId(cuentaId, mk)] || {};
+  document.getElementById('gastoPromptTitle').textContent = `Capturar facturado — ${cuentaId} · ${mk}`;
+  document.getElementById('gastoFacturadoMonto').value = rec.facturado!=null ? rec.facturado : '';
+  document.getElementById('gastoFacturadoPor').value = '';
   document.getElementById('gastoPrompt').classList.add('show');
-});
+}
 document.getElementById('gastoCancel').addEventListener('click', ()=>{
-  document.getElementById('gastoPrompt').classList.remove('show');
+  document.getElementById('gastoPrompt').classList.remove('show'); pendingFacturado=null;
 });
-// Folio de cada gasto: mes de carga + consecutivo de ese mes (por ejemplo "2026-09-001"),
-// para poder identificar y referenciar un gasto puntual al comprobarlo. El consecutivo se
-// calcula sobre lo que ya existe en gastosDocs (todos los meses, vía el listener en vivo), así
-// que sigue subiendo aunque se cambie de mes en la vista.
-function siguienteFolioGasto(fechaCarga){
-  const prefix = (fechaCarga||iso(new Date())).slice(0,7) + '-';
-  let maxN = 0;
-  Object.values(gastosDocs).forEach(g=>{
-    if(g.folio && g.folio.startsWith(prefix)){
-      const n = parseInt(g.folio.slice(prefix.length), 10);
-      if(!isNaN(n) && n>maxN) maxN = n;
-    }
-  });
-  return prefix + String(maxN+1).padStart(3,'0');
-}
-
 document.getElementById('gastoGuardar').addEventListener('click', async ()=>{
-  const fechaCarga = document.getElementById('gastoFecha').value || iso(new Date());
-  const body = {
-    folio: siguienteFolioGasto(fechaCarga),
-    cuenta: document.getElementById('gastoCuenta').value,
-    tipo: document.getElementById('gastoTipo').value,
-    monto: parseFloat(document.getElementById('gastoMonto').value)||0,
-    descripcion: document.getElementById('gastoDescripcion').value.trim(),
-    fechaCarga,
-    registradoPor: document.getElementById('gastoRegistradoPor').value.trim() || 'Sin nombre',
-    cargadoPor: document.getElementById('gastoCargadoPor').value,
-    estado: 'cargado',
-    fechaRegistro: new Date().toISOString(),
-  };
+  if(!pendingFacturado || !db) return;
+  const monto = parseFloat(document.getElementById('gastoFacturadoMonto').value);
+  if(isNaN(monto) || monto<0) return;
+  const por = document.getElementById('gastoFacturadoPor').value.trim() || identidadActual();
   document.getElementById('gastoPrompt').classList.remove('show');
-  if(!db) return;
-  const id = 'g_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
-  try{ await db.collection('gastos').doc(id).set(body); }catch(e){ console.error(e); }
+  const id = docId(pendingFacturado.cuenta, pendingFacturado.mes);
+  try{
+    await db.collection('gastos').doc(id).update({
+      cuenta: pendingFacturado.cuenta, periodo: pendingFacturado.mes,
+      facturado: monto, facturadoPor: por, facturadoFecha: new Date().toISOString(),
+    });
+  }catch(e){ console.error(e); }
+  pendingFacturado=null;
 });
 
-// Confirmado contigo: si el gasto lo cargó un ejecutivo, lo aprueba el gerente de la cuenta;
-// si lo cargó el propio gerente (cuentas sin ejecutivo), lo aprueba Carlos. La contadora es
-// quien marca "pagado" (ella paga y valida los documentos).
-function openGastoAprobarPrompt(id, rol){
-  pendingConfirm = {cuenta:'', key:id, tipo:'gasto_aprobar'};
-  document.getElementById('promptTitle').textContent = 'Marcar aprobado — le toca a: '+rol;
-  document.getElementById('promptSub').textContent = '¿Quién está aprobando este gasto?';
-  document.getElementById('promptName').hidden = false; // el flujo de nómina puede haber dejado este campo oculto
-  document.getElementById('promptName').value='';
-  document.getElementById('promptFechaRow').hidden = true; // este paso no representa una fecha de "entrega" — no aplica aquí
-  document.getElementById('promptFileRow').hidden = true;
-  resetPromptFileField();
-  document.getElementById('namePrompt').classList.add('show');
-  document.getElementById('promptName').focus();
-}
-function openGastoPagarPrompt(id){
-  pendingConfirm = {cuenta:'', key:id, tipo:'gasto_pagar'};
-  document.getElementById('promptTitle').textContent = 'Marcar pagado y validado — Contadora';
-  document.getElementById('promptSub').textContent = '¿Quién de Finanzas confirma el pago y la validación de documentos?';
-  document.getElementById('promptName').hidden = false; // el flujo de nómina puede haber dejado este campo oculto
-  document.getElementById('promptName').value='';
-  document.getElementById('promptFechaRow').hidden = true; // este paso no representa una fecha de "entrega" — no aplica aquí
-  document.getElementById('promptFileRow').hidden = true;
-  resetPromptFileField();
-  document.getElementById('namePrompt').classList.add('show');
-  document.getElementById('promptName').focus();
-}
-
-// Comprobación parcial: confirmado contigo — un gasto puede comprobarse en varios abonos (por
-// ejemplo, de $1,000 comprobar $200 y luego los $800 restantes). montoComprobado va acumulando
-// cada abono en `comprobantes`; el gasto pasa a estado 'comprobado' hasta que la suma alcanza el
-// monto total. Mientras tanto sigue en 'pagado' y el botón "Marcar comprobado" se puede volver a
-// usar para registrar el siguiente abono.
-let pendingComprobar = null;
-function openComprobarPrompt(id){
-  pendingComprobar = id;
-  const g = gastosDocs[id] || {};
-  const monto = Number(g.monto)||0;
-  const montoComprobado = Number(g.montoComprobado)||0;
-  const pendiente = Math.max(0, monto - montoComprobado);
-  document.getElementById('comprobarResumen').textContent =
-    `Monto del gasto: ${fmtMoney(monto)} · Comprobado hasta ahora: ${fmtMoney(montoComprobado)} · Pendiente: ${fmtMoney(pendiente)}`;
-  document.getElementById('comprobarMonto').value = pendiente>0 ? pendiente.toFixed(2) : (monto?monto.toFixed(2):'');
-  document.getElementById('comprobarMonto').max = String(pendiente>0 ? pendiente : monto);
-  document.getElementById('comprobarTipo').value='fiscal';
-  document.getElementById('comprobarRef').value='';
-  document.getElementById('comprobarPor').value='';
-  const fileInput = document.getElementById('comprobarFile');
-  const errEl = document.getElementById('comprobarFileError');
-  if(fileInput) fileInput.value = '';
-  if(errEl){ errEl.hidden = true; errEl.textContent = ''; }
-  const hint = document.getElementById('comprobarFileHint');
-  if(hint){
-    const archivosPrevios = archivosOf(g);
-    hint.textContent = archivosPrevios.length
-      ? `Ya hay ${archivosPrevios.length} archivo${archivosPrevios.length>1?'s':''} subido${archivosPrevios.length>1?'s':''} (${archivosPrevios.map(a=>a.nombre||'sin nombre').join(', ')}) — subir archivos nuevos reemplaza este conjunto.`
-      : `PDF, Excel, Word, JPG o PNG · máx. 20 MB por archivo · hasta ${MAX_GASTO_FILES} archivos.`;
-  }
-  document.getElementById('comprobarPrompt').classList.add('show');
-}
-document.getElementById('comprobarCancel').addEventListener('click', ()=>{
-  document.getElementById('comprobarPrompt').classList.remove('show'); pendingComprobar=null;
+// Subir el reporte de gastos de la contadora (Excel) — le toca a contadora/admin. Lee el
+// archivo con parseArchivoGastos() y actualiza, para cada combinación cuenta+mes que traiga, el
+// campo que corresponda según el tipo elegido (ver puedeSubirReporteGastos()).
+document.getElementById('openGastoUploadPrompt').addEventListener('click', ()=>{
+  document.getElementById('gastoUploadTipo').value='pendiente_sin_factura';
+  document.getElementById('gastoUploadFile').value='';
+  document.getElementById('gastoUploadPor').value='';
+  const errEl = document.getElementById('gastoUploadError');
+  errEl.hidden=true; errEl.textContent='';
+  document.getElementById('gastoUploadPrompt').classList.add('show');
 });
-document.getElementById('comprobarConfirm').addEventListener('click', async ()=>{
-  if(!pendingComprobar || !db) return;
-  const g = gastosDocs[pendingComprobar] || {};
-  const monto = Number(g.monto)||0;
-  const montoComprobadoPrevio = Number(g.montoComprobado)||0;
-  const montoIngresado = Math.max(0, parseFloat(document.getElementById('comprobarMonto').value)||0);
-  const nuevoMontoComprobado = montoComprobadoPrevio + montoIngresado;
-  const completo = nuevoMontoComprobado >= monto - 0.005;
-
-  // Los archivos del comprobante son por gasto (no por abono), y ahora pueden ser varios a la vez
-  // (típico CFDI = XML + PDF) — se validan y suben TODOS antes de escribir el registro, y si algo
-  // falla el usuario se queda en el modal para reintentar sin perder lo ya escrito. Volver a
-  // subir archivos para este gasto reemplaza el conjunto anterior completo.
-  const fileInput = document.getElementById('comprobarFile');
-  const files = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
-  const errEl = document.getElementById('comprobarFileError');
+document.getElementById('gastoUploadCancel').addEventListener('click', ()=>{
+  document.getElementById('gastoUploadPrompt').classList.remove('show');
+});
+document.getElementById('gastoUploadConfirm').addEventListener('click', async ()=>{
+  const fileInput = document.getElementById('gastoUploadFile');
+  const errEl = document.getElementById('gastoUploadError');
   errEl.hidden = true; errEl.textContent = '';
-  const archivosPrevios = archivosOf(g);
-  let archivos = archivosPrevios;
-  if(files.length){
-    if(files.length > MAX_GASTO_FILES){
-      errEl.textContent = `Puedes adjuntar hasta ${MAX_GASTO_FILES} archivos por comprobante (elegiste ${files.length}).`;
-      errEl.hidden = false;
-      fileInput.value = '';
-      return;
-    }
-    // Validar cada archivo por separado — si uno solo es inválido se rechaza toda la selección
-    // (nombrando cuál fue), sin dejar el campo bloqueado: se limpia para que se puedan volver a
-    // elegir los archivos válidos (y corregir el que falló).
-    for(const f of files){
-      const v = validateFileGasto(f);
-      if(!v.ok){
-        errEl.textContent = `"${f.name}": ${v.msg}`;
-        errEl.hidden = false;
-        fileInput.value = '';
-        return;
-      }
-    }
-    const btn = document.getElementById('comprobarConfirm');
-    const originalLabel = btn.textContent;
-    btn.disabled = true; btn.textContent = 'Subiendo…';
-    const nuevosArchivos = [];
-    for(let i=0; i<files.length; i++){
-      const f = files[i];
-      const ext = extOf(f.name);
-      const path = pathGasto(g.cuenta, pendingComprobar, i, ext);
-      const up = await subirArchivo(f, path);
-      if(!up.ok){
-        btn.disabled = false; btn.textContent = originalLabel;
-        errEl.textContent = `"${f.name}": ${up.msg}`;
-        errEl.hidden = false;
-        return;
-      }
-      nuevosArchivos.push({path, nombre: f.name});
-    }
-    btn.disabled = false; btn.textContent = originalLabel;
-    archivos = nuevosArchivos;
-    // Si esta vez se subieron menos archivos que antes, los índices sobrantes de la subida
-    // anterior quedarían huérfanos en storage (ya no referenciados por ningún link) — se borran
-    // para no dejarlos acumulados indefinidamente.
-    if(archivosPrevios.length > nuevosArchivos.length){
-      borrarArchivosStorage(archivosPrevios.slice(nuevosArchivos.length).map(a=>a.path));
-    }
-  }
+  const file = fileInput.files && fileInput.files[0];
+  if(!file){ errEl.textContent = 'Elige un archivo primero.'; errEl.hidden = false; return; }
+  const ext = extOf(file.name);
+  if(!['xlsx','xls'].includes(ext)){ errEl.textContent = 'Usa un archivo Excel (.xlsx o .xls).'; errEl.hidden = false; return; }
+  if(file.size > MAX_FILE_BYTES){ errEl.textContent = 'El archivo pesa más de 20 MB, intenta con uno más ligero.'; errEl.hidden = false; return; }
+  const tipo = document.getElementById('gastoUploadTipo').value;
+  const por = document.getElementById('gastoUploadPor').value.trim() || identidadActual();
+  const btn = document.getElementById('gastoUploadConfirm');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Procesando…';
+  try{
+    const resultado = await parseArchivoGastos(file);
+    const campoMonto = tipo==='pendiente_sin_factura' ? 'montoPendienteComprobar' : (tipo==='comprobado_con_factura' ? 'montoComprobado' : 'montoSolicitadoDirecto');
+    const campoFilas = tipo==='pendiente_sin_factura' ? 'filasPendiente' : (tipo==='comprobado_con_factura' ? 'filasComprobado' : 'filasSolicitado');
+    const campoPor = tipo==='pendiente_sin_factura' ? 'actualizadoPendientePor' : (tipo==='comprobado_con_factura' ? 'actualizadoComprobadoPor' : 'actualizadoSolicitadoPor');
+    const campoFecha = tipo==='pendiente_sin_factura' ? 'actualizadoPendienteFecha' : (tipo==='comprobado_con_factura' ? 'actualizadoComprobadoFecha' : 'actualizadoSolicitadoFecha');
+    const campoArchivo = tipo==='pendiente_sin_factura' ? 'archivoPendienteNombre' : (tipo==='comprobado_con_factura' ? 'archivoComprobadoNombre' : 'archivoSolicitadoNombre');
 
-  const entry = {
-    monto: montoIngresado,
-    tipo: document.getElementById('comprobarTipo').value,
-    ref: document.getElementById('comprobarRef').value.trim(),
-    por: document.getElementById('comprobarPor').value.trim() || 'Sin nombre',
-    fecha: new Date().toISOString(),
-  };
-  const comprobantesPrevios = Array.isArray(g.comprobantes) ? g.comprobantes : [];
-  const body = {
-    montoComprobado: nuevoMontoComprobado,
-    comprobantes: [...comprobantesPrevios, entry],
-    comprobadoPor: entry.por,
-    comprobanteTipo: entry.tipo,
-    comprobanteRef: entry.ref,
-  };
-  if(archivos.length){ body.archivos = archivos; }
-  if(completo){
-    body.estado = 'comprobado';
-    body.fechaComprobado = new Date().toISOString();
+    const entradas = [];
+    Object.keys(resultado.porCuentaMes).forEach(cuentaApp=>{
+      Object.keys(resultado.porCuentaMes[cuentaApp]).forEach(mk=>{
+        entradas.push({cuentaApp, mk, slot: resultado.porCuentaMes[cuentaApp][mk]});
+      });
+    });
+    await Promise.all(entradas.map(({cuentaApp, mk, slot})=>{
+      const id = docId(cuentaApp, mk);
+      const patch = {
+        cuenta: cuentaApp, periodo: mk,
+        [campoMonto]: slot.monto,
+        [campoFilas]: slot.filas,
+        [campoPor]: por,
+        [campoFecha]: new Date().toISOString(),
+        [campoArchivo]: file.name,
+      };
+      return db.collection('gastos').doc(id).update(patch);
+    }));
+
+    const nCombos = entradas.length;
+    const nMeses = new Set(entradas.map(e=>e.mk)).size;
+    const resumenEl = document.getElementById('gastoUploadResumen');
+    resumenEl.hidden = false;
+    resumenEl.className = 'alert-banner';
+    resumenEl.innerHTML = `<span class="alert-icon">✅</span><div><strong>Archivo procesado</strong>
+      ${resultado.filasLeidas} filas leídas · ${nCombos} combinaciones cuenta/mes actualizadas (${nMeses} mes${nMeses!==1?'es':''})
+      ${resultado.filasSinFecha?` · ${resultado.filasSinFecha} filas sin fecha de pago (se ignoraron)`:''}
+      ${resultado.filasSinMonto?` · ${resultado.filasSinMonto} filas sin monto válido (se ignoraron)`:''}
+    </div>`;
+    document.getElementById('gastoUploadPrompt').classList.remove('show');
+  }catch(e){
+    console.error(e);
+    errEl.textContent = e.message || 'No se pudo leer el archivo.';
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = original;
   }
-  document.getElementById('comprobarPrompt').classList.remove('show');
-  try{ await db.collection('gastos').doc(pendingComprobar).update(body); }catch(e){ console.error(e); }
-  pendingComprobar=null;
 });
 document.getElementById('saveConfig').addEventListener('click', async ()=>{
   const newConfig = {

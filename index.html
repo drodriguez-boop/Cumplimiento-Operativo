@@ -662,19 +662,18 @@ details.config[open] summary::before{transform:rotate(90deg);}
 <div class="name-prompt" id="gastoUploadPrompt">
   <div class="name-card">
     <h3>Subir reporte de gastos</h3>
-    <p>Sube el Excel de la contadora. El sistema lee cada fila y junta el monto por cuenta y por mes (según la fecha de pago de cada fila) — no hace falta elegir el mes a mano; si el archivo trae varios meses, se actualizan todos.</p>
+    <p>Sube el reporte de la contadora (Excel o Excel binario). El sistema lee cada fila y junta el monto por cuenta y por mes (según la fecha de pago de cada fila) — no hace falta elegir el mes a mano; si el archivo trae varios meses (como agosto y septiembre juntos), se actualizan todos.</p>
     <div class="field">
-      <label>¿Qué trae este archivo?</label>
+      <label>¿Qué reporte es este archivo?</label>
       <select id="gastoUploadTipo">
-        <option value="pendiente_sin_factura">Gastos ya pagados que AÚN NO tienen factura/comprobante</option>
-        <option value="comprobado_con_factura">Gastos que YA tienen factura/comprobante</option>
-        <option value="solicitado_directo">El total de gastos del periodo (con o sin factura)</option>
+        <option value="solicitado_directo">Reporte de PAGADOS — el total de gastos pagados del periodo</option>
+        <option value="pendiente_sin_factura">Reporte de SOLICITUDES SIN FACTURA — los que aún les falta comprobación</option>
       </select>
-      <div class="hint">Si no sabes cuál aplica, confírmalo con la contadora — puedes subir varios archivos, uno por cada tipo, y el sistema los junta por cuenta y mes.</div>
+      <div class="hint">Sube los dos reportes (uno de cada tipo) para tener tanto el total solicitado como el % de comprobación. Si no sabes cuál aplica, confírmalo con la contadora.</div>
     </div>
     <div class="field">
       <label>Archivo (Excel)</label>
-      <input type="file" id="gastoUploadFile" accept=".xlsx,.xls">
+      <input type="file" id="gastoUploadFile" accept=".xlsx,.xls,.xlsb">
       <p class="file-error" id="gastoUploadError" hidden></p>
     </div>
     <div class="field">
@@ -998,13 +997,16 @@ function puedeCapturarFacturado(){
 }
 
 // Cuenta que usa el Excel de la contadora -> id de cuenta de la app. Confirmado con el archivo
-// de muestra ADM_20260918_1.xlsx: el nombre de "Cuenta" en el Excel casi nunca es idéntico al de
-// la app (ej. "SPIN MASTER" vs "Spinmaster"), así que se normaliza (mayúsculas, sin acentos) y
-// se busca primero en este alias fijo, y si no aparece, por coincidencia exacta contra
-// CUENTA_IDS. Lo que no matchea ninguna de las dos formas cae en "Otros / gastos internos"
-// (gastos internos de Evolve, clientes que no están en esta herramienta, etc.) — avísame si
-// falta algún alias (Gifan, Multimarca, Hanes, Delonghi, Comercial, Piquio o Juguetimax no
-// aparecían en el archivo de muestra, así que solo tienen la coincidencia exacta por ahora).
+// de muestra ADM_20260918_1.xlsx y confirmado con los reportes reales del 28-sep (PAGADOS y
+// SOLICITUDES SIN FACTURA): el nombre de "Cuenta" en el Excel casi nunca es idéntico al de la
+// app (ej. "SPIN MASTER" vs "Spinmaster"), así que se normaliza (mayúsculas, sin acentos) y se
+// busca primero en este alias fijo, y si no aparece, por coincidencia exacta contra CUENTA_IDS.
+// Lo que no matchea ninguna de las dos formas cae en "Otros / gastos internos" (gastos internos
+// de Evolve, clientes que no están en esta herramienta, etc.) — avísame si falta algún alias.
+// "ICONO COMERCIAL" se agregó como alias de "Comercial" a partir de los reportes reales (es la
+// única cuenta del Excel que podría corresponder a esa cuenta de la app) — confírmamelo si es
+// una cuenta distinta, para no juntar gastos que no son. Gifan, Multimarca, Hanes, Delonghi,
+// Ajemex, Ruz, Disney, Bepensa y ADM ya matchean exacto sin necesitar alias.
 function normalizaCuentaTexto(s){
   return String(s==null?'':s).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
 }
@@ -1012,6 +1014,7 @@ const ALIAS_CUENTA_GASTOS = {
   'SPIN MASTER': 'Spinmaster',
   'ZURU TOYS': 'Zuru',
   'COMERCIALIZADORA HISPANA': 'Hispana',
+  'ICONO COMERCIAL': 'Comercial',
 };
 const ALIAS_CUENTA_GASTOS_NORM = Object.fromEntries(
   Object.entries(ALIAS_CUENTA_GASTOS).map(([k,v])=>[normalizaCuentaTexto(k), v])
@@ -1073,22 +1076,24 @@ async function parseArchivoGastos(file){
 
 // Monto solicitado/comprobado/facturado ya calculados para UNA cuenta y UN mes — de aquí sale
 // tanto la tabla de la pestaña Gastos como el % de KPI4 por mes calendario (ver
-// scoresGastosPorGerente). montoSolicitadoDirecto (si alguna vez se sube un archivo de "el total
-// del periodo") manda sobre la suma de pendiente+comprobado; si no hay ninguno de los tres, se
-// reporta "sin datos" (null), no 0 — para no confundir "no ha llegado el archivo" con "se
-// comprobó cero".
+// scoresGastosPorGerente). Confirmado el 28-sep con los dos reportes reales de la contadora:
+// "PAGADOS" (todos los gastos pagados del periodo) llena montoSolicitadoDirecto, y "SOLICITUDES
+// SIN FACTURA" (a los que aún les falta comprobación) llena montoPendienteComprobar. Con ambos
+// reportes, lo comprobado = solicitado − pendiente sin factura (lo que ya se facturó/comprobó es
+// el total menos lo que todavía no). Si solo llega uno de los dos reportes, no se puede calcular
+// el % de comprobación todavía y se reporta "sin datos" (null), no 0 — para no confundir "falta
+// el otro reporte" con "se comprobó cero". montoComprobado (de un eventual tercer archivo "ya con
+// factura") se deja como respaldo por si algún día existiera ese formato.
 function gastoDatosCuentaMes(cuentaId, mk){
   const rec = gastosDocs[docId(cuentaId, mk)] || {};
-  const tieneDirecto = rec.montoSolicitadoDirecto!=null;
-  const tieneParcial = rec.montoPendienteComprobar!=null || rec.montoComprobado!=null;
-  const solicitado = tieneDirecto ? Number(rec.montoSolicitadoDirecto)
-    : tieneParcial ? (Number(rec.montoPendienteComprobar)||0) + (Number(rec.montoComprobado)||0)
-    : null;
-  const comprobado = rec.montoComprobado!=null ? Number(rec.montoComprobado) : null;
+  const solicitado = rec.montoSolicitadoDirecto!=null ? Number(rec.montoSolicitadoDirecto) : null;
+  const pendienteSinFactura = rec.montoPendienteComprobar!=null ? Number(rec.montoPendienteComprobar) : null;
+  const comprobado = (solicitado!=null && pendienteSinFactura!=null) ? Math.max(0, solicitado - pendienteSinFactura)
+    : (rec.montoComprobado!=null ? Number(rec.montoComprobado) : null);
   const pctComprobacion = (solicitado!=null && solicitado>0 && comprobado!=null) ? comprobado/solicitado : null;
   const facturado = rec.facturado!=null ? Number(rec.facturado) : null;
   const facturacionCumplida = (solicitado!=null && facturado!=null) ? Math.abs(facturado - solicitado) < 0.005 : null;
-  return {rec, solicitado, comprobado, pctComprobacion, facturado, facturacionCumplida};
+  return {rec, solicitado, pendienteSinFactura, comprobado, pctComprobacion, facturado, facturacionCumplida};
 }
 // % de comprobación por gerente para un mes calendario (y,m) cualquiera — mismo patrón que
 // scoresMesPorGerente/scoresQuincenaPorGerente: promedio simple de las cuentas del gerente que sí
@@ -2501,7 +2506,7 @@ document.getElementById('gastoGuardar').addEventListener('click', async ()=>{
 // archivo con parseArchivoGastos() y actualiza, para cada combinación cuenta+mes que traiga, el
 // campo que corresponda según el tipo elegido (ver puedeSubirReporteGastos()).
 document.getElementById('openGastoUploadPrompt').addEventListener('click', ()=>{
-  document.getElementById('gastoUploadTipo').value='pendiente_sin_factura';
+  document.getElementById('gastoUploadTipo').value='solicitado_directo';
   document.getElementById('gastoUploadFile').value='';
   document.getElementById('gastoUploadPor').value='';
   const errEl = document.getElementById('gastoUploadError');
@@ -2518,7 +2523,7 @@ document.getElementById('gastoUploadConfirm').addEventListener('click', async ()
   const file = fileInput.files && fileInput.files[0];
   if(!file){ errEl.textContent = 'Elige un archivo primero.'; errEl.hidden = false; return; }
   const ext = extOf(file.name);
-  if(!['xlsx','xls'].includes(ext)){ errEl.textContent = 'Usa un archivo Excel (.xlsx o .xls).'; errEl.hidden = false; return; }
+  if(!['xlsx','xls','xlsb'].includes(ext)){ errEl.textContent = 'Usa un archivo Excel (.xlsx, .xls o .xlsb).'; errEl.hidden = false; return; }
   if(file.size > MAX_FILE_BYTES){ errEl.textContent = 'El archivo pesa más de 20 MB, intenta con uno más ligero.'; errEl.hidden = false; return; }
   const tipo = document.getElementById('gastoUploadTipo').value;
   const por = document.getElementById('gastoUploadPor').value.trim() || identidadActual();
@@ -2527,11 +2532,11 @@ document.getElementById('gastoUploadConfirm').addEventListener('click', async ()
   btn.disabled = true; btn.textContent = 'Procesando…';
   try{
     const resultado = await parseArchivoGastos(file);
-    const campoMonto = tipo==='pendiente_sin_factura' ? 'montoPendienteComprobar' : (tipo==='comprobado_con_factura' ? 'montoComprobado' : 'montoSolicitadoDirecto');
-    const campoFilas = tipo==='pendiente_sin_factura' ? 'filasPendiente' : (tipo==='comprobado_con_factura' ? 'filasComprobado' : 'filasSolicitado');
-    const campoPor = tipo==='pendiente_sin_factura' ? 'actualizadoPendientePor' : (tipo==='comprobado_con_factura' ? 'actualizadoComprobadoPor' : 'actualizadoSolicitadoPor');
-    const campoFecha = tipo==='pendiente_sin_factura' ? 'actualizadoPendienteFecha' : (tipo==='comprobado_con_factura' ? 'actualizadoComprobadoFecha' : 'actualizadoSolicitadoFecha');
-    const campoArchivo = tipo==='pendiente_sin_factura' ? 'archivoPendienteNombre' : (tipo==='comprobado_con_factura' ? 'archivoComprobadoNombre' : 'archivoSolicitadoNombre');
+    const campoMonto = tipo==='pendiente_sin_factura' ? 'montoPendienteComprobar' : 'montoSolicitadoDirecto';
+    const campoFilas = tipo==='pendiente_sin_factura' ? 'filasPendiente' : 'filasSolicitado';
+    const campoPor = tipo==='pendiente_sin_factura' ? 'actualizadoPendientePor' : 'actualizadoSolicitadoPor';
+    const campoFecha = tipo==='pendiente_sin_factura' ? 'actualizadoPendienteFecha' : 'actualizadoSolicitadoFecha';
+    const campoArchivo = tipo==='pendiente_sin_factura' ? 'archivoPendienteNombre' : 'archivoSolicitadoNombre';
 
     const entradas = [];
     Object.keys(resultado.porCuentaMes).forEach(cuentaApp=>{

@@ -246,6 +246,9 @@ details.config[open] summary::before{transform:rotate(90deg);}
 .portada-controls{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 20px;}
 .portada-controls label{font-size:12px;color:var(--muted);}
 .portada-controls select{font-family:var(--font-sans);font-size:13px;padding:7px 14px;border-radius:10px;border:1px solid var(--rule);background:var(--paper-pure);color:var(--ink);}
+.semana-controls{display:flex;align-items:center;gap:10px;margin:32px 0 14px;}
+.semana-controls label{font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
+.semana-controls select{font-family:var(--font-sans);font-size:13px;padding:7px 14px;border-radius:10px;border:1px solid var(--rule);background:var(--paper-pure);color:var(--ink);}
 #portadaHistorialLabel{margin:0 auto 8px;}
 .portada-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;}
 @media (max-width:900px){.portada-stats{grid-template-columns:1fr 1fr;}}
@@ -419,6 +422,36 @@ details.config[open] summary::before{transform:rotate(90deg);}
         </thead>
         <tbody id="tbody"></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- Nómina semanal — pedido del 28-sep ("semanal es independiente a la quincenal"): antes cada
+       semana solo se veía anidada dentro de la quincena a la que le tocaba por fecha (2 de las 4
+       semanas del mes por vista), obligando a revisar las dos quincenas para ver el mes completo.
+       Ahora tiene su propio selector de Semana, independiente del de Quincena de arriba, así que
+       cualquiera de las ~4 semanas del mes se puede ver/confirmar sin importar qué quincena esté
+       elegida. Solo aparecen aquí las cuentas con proceso semanal activo (ADM siempre; Multimarca
+       y Spin Master solo si su temporada está prendida en Configuración). El % de cumplimiento
+       (arriba y en Portada) no cambia con esto — sigue siendo el mismo cálculo combinado de
+       siempre — esta tabla es solo para ver/confirmar cada semana por separado. -->
+  <div id="semanalSection" hidden>
+    <div class="semana-controls">
+      <label for="semanaSelect">Semana</label>
+      <select id="semanaSelect"></select>
+    </div>
+    <div class="tablewrap">
+      <div class="tablewrap-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Cuenta</th>
+              <th>KPI 1 · Entrega a tiempo</th>
+              <th>KPI 2 · Cero errores</th>
+            </tr>
+          </thead>
+          <tbody id="tbodySemanal"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -766,6 +799,7 @@ const UNGROUPED_CUENTA_IDS = CUENTA_IDS.filter(id => !GERENTES.some(g => g.cuent
 let config = {diasEC:3, diasNomina:2, cuentaEsp:'', diasEsp:2, temporada:{Multimarca:false, Spinmaster:false}};
 let cumplimientoDocs = {}; // id -> data
 let selectedQuincena = null;
+let selectedSemana = null; // semana (jueves de pago) elegida en la nueva sección "Nómina semanal", independiente de selectedQuincena
 let db = null;
 
 // --- Sesión / roles ---
@@ -1289,6 +1323,69 @@ function buildMesesGastos(){
   return list;
 }
 
+// Construye el chip visual de KPI1 (entrega a tiempo) para UNA obligación puntual (quincenal o
+// semanal) — factorizado el 28-sep para que la tabla quincenal y la nueva tabla semanal
+// independiente (ver #semanalSection) compartan exactamente la misma lógica en vez de
+// duplicarla. Regresa el HTML del chip y si contó/estuvo a tiempo/quedó pendiente para el
+// usuario actual, para que quien llama decida cómo acumular sus propios contadores.
+function chipKpi1(c, ob, ctx){
+  const rec = cumplimientoDocs[docId(c.id, ob.key)] || {};
+  const confirmado = rec.fechaConfirmacion ? new Date(rec.fechaConfirmacion) : null;
+  let chip, conto=false, aTiempo=false, pendiente=false;
+  if(confirmado){
+    const ok = confirmado <= ob.limiteEC;
+    const quien = rec.confirmadoPor ? `<div class="confirmado-por">${rec.confirmadoPor}</div>` : '';
+    chip = (ok ? `<span class="chip ok">✓ a tiempo</span>` : `<span class="chip bad">✕ fuera de tiempo</span>`) + ` <span class="fecha-real">${fmtShort(confirmado)}</span>` + quien;
+    conto = true; aTiempo = ok;
+  } else if(ctx.today > ob.limiteEC){
+    conto = true;
+    if(ctx.puedeKpi1 && ctx.esMiCuenta){
+      pendiente = true;
+      chip = `<span class="chip bad">✕ venció sin confirmar</span> <button class="action" onclick="openPrompt('${c.id}','${ob.key}','${ob.label}')">Registrar fecha real</button>`;
+    } else {
+      chip = `<span class="chip bad">✕ venció sin confirmar</span>`;
+    }
+  } else if(ctx.puedeKpi1 && ctx.esMiCuenta){
+    pendiente = true;
+    chip = `<span class="chip pending">pendiente (vence ${fmtShort(ob.limiteEC)})</span> <button class="action" onclick="openPrompt('${c.id}','${ob.key}','${ob.label}')">Confirmar entrega</button>`;
+  } else {
+    chip = `<span class="chip pending">pendiente (vence ${fmtShort(ob.limiteEC)})</span> <span class="chip na">le corresponde al gerente/ejecutivo</span>`;
+  }
+  return {chip, conto, aTiempo, pendiente};
+}
+// Mismo patrón que chipKpi1() pero para KPI2 (cero errores) — también factorizado el 28-sep.
+function chipKpi2(c, ob, ctx){
+  const rec = cumplimientoDocs[docId(c.id, ob.key)] || {};
+  let chip, conto=false, sinError=false, pendiente=false;
+  if(ctx.today <= ob.pago){
+    chip = `<span class="chip na">se activa tras el pago (${fmtShort(ob.pago)})</span>`;
+  } else if(rec.huboError === true){
+    const tags = (rec.erroresTipo||[]).map(t=>{
+      const label = t==='otro' && rec.otroTexto ? rec.otroTexto : (ERROR_LABELS[t]||t);
+      return `<span class="err-tag">${label}</span>`;
+    }).join('');
+    const quien2 = rec.errorConfirmadoPor ? `<div class="confirmado-por">${rec.errorConfirmadoPor}</div>` : '';
+    const corregir2 = (ctx.puedeKpi2 && ctx.esMiCuenta) ? `<button class="link-btn" onclick="resetError('${c.id}','${ob.key}')">Corregir</button>` : '';
+    chip = `<span class="chip bad">✕ con error</span><div class="err-tags">${tags}</div>${quien2}${corregir2}`;
+    conto = true;
+  } else if(rec.huboError === false){
+    const quien2 = rec.errorConfirmadoPor ? `<div class="confirmado-por">${rec.errorConfirmadoPor}</div>` : '';
+    const corregir2 = (ctx.puedeKpi2 && ctx.esMiCuenta) ? `<button class="link-btn" onclick="resetError('${c.id}','${ob.key}')">Corregir</button>` : '';
+    chip = `<span class="chip ok">✓ sin error</span>${quien2}${corregir2}`;
+    conto = true; sinError = true;
+  } else if(ctx.puedeKpi2 && ctx.esMiCuenta){
+    pendiente = true;
+    const fechaTxt = rec.fechaConfirmacion ? `<div class="fecha-real">Entrega registrada: ${fmtShort(new Date(rec.fechaConfirmacion))}</div>` : '';
+    chip = `${fechaTxt}<div class="err-toggle">
+      <button class="sel-ok-btn" onclick="setError('${c.id}','${ob.key}',false)">Sin error</button>
+      <button class="sel-bad-btn" onclick="openErrorPrompt('${c.id}','${ob.key}','${ob.label}')">Con error</button>
+    </div>`;
+  } else {
+    chip = `<span class="chip na">esperando confirmación del gerente/ejecutivo</span>`;
+  }
+  return {chip, conto, sinError, pendiente};
+}
+
 function render(){
   const today = new Date(); today.setHours(0,0,0,0);
   const GERENTES_VIEW = visibleGerentes();
@@ -1320,93 +1417,40 @@ function render(){
   CUENTAS.forEach(c=>{
     const esMiCuenta = misCuentas===null || misCuentas.includes(c.id);
     const obs = obligacionesFor(q, c);
+    // El % (score1/score2) se sigue calculando juntando TODAS las obligaciones de la cuenta en
+    // esta quincena (quincenal + las semanas que le tocan), exactamente igual que antes — eso no
+    // cambia. Lo que sí cambia (pedido del 28-sep, "semanal es independiente a la quincenal") es
+    // que esta tabla ya NO muestra anidadas las filas de semana: esa vista/confirmación ahora
+    // vive en su propia sección "Nómina semanal" de abajo (con su propio selector de Semana),
+    // así que aquí solo se pinta la obligación quincenal.
+    const obQuincenal = obs.find(ob=>ob.tipo==='quincenal');
 
     let onTime1=0, eval1=0;
-    const obLines1 = obs.map(ob=>{
-      const rec = cumplimientoDocs[docId(c.id, ob.key)] || {};
-      const confirmado = rec.fechaConfirmacion ? new Date(rec.fechaConfirmacion) : null;
-      const tag = ob.tipo==='semanal' ? `<span class="ob-tag">${ob.label}</span>` : (obs.length>1 ? `<span class="ob-tag">Quincenal</span>` : '');
-      let chip;
-      if(confirmado){
-        const ok = confirmado <= ob.limiteEC;
-        const quien = rec.confirmadoPor ? `<div class="confirmado-por">${rec.confirmadoPor}</div>` : '';
-        // Ya no se adjunta archivo en Nómina (quitado, confirmado contigo) — lo que importa es la
-        // fecha real capturada, así que se muestra en texto (antes solo se veía a tiempo/fuera de
-        // tiempo sin decir cuál fue la fecha) — esto también le sirve a Nómina para confirmar KPI2
-        // contra la fecha correcta, ver obLines2 más abajo.
-        chip = (ok ? `<span class="chip ok">✓ a tiempo</span>` : `<span class="chip bad">✕ fuera de tiempo</span>`) + ` <span class="fecha-real">${fmtShort(confirmado)}</span>` + quien;
-        eval1++; if(ok) onTime1++;
-      } else if(today > ob.limiteEC){
-        eval1++;
-        if(puedeKpi1 && esMiCuenta){
-          // Venció sin que nadie confirmara, pero quien podría hacerlo (gerente/ejecutivo/admin,
-          // dueño de la cuenta) sigue viendo esto — no es un callejón sin salida: puede registrar
-          // la fecha real (aunque sea tarde) para que el histórico quede correcto en vez de perderse.
-          pendingKpi1ParaMi++;
-          chip = `<span class="chip bad">✕ venció sin confirmar</span> <button class="action" onclick="openPrompt('${c.id}','${ob.key}','${ob.label}')">Registrar fecha real</button>`;
-        } else {
-          chip = `<span class="chip bad">✕ venció sin confirmar</span>`;
-        }
-      } else if(puedeKpi1 && esMiCuenta){
-        pendingKpi1ParaMi++;
-        chip = `<span class="chip pending">pendiente (vence ${fmtShort(ob.limiteEC)})</span> <button class="action" onclick="openPrompt('${c.id}','${ob.key}','${ob.label}')">Confirmar entrega</button>`;
-      } else {
-        // Nominista (u otro rol sin permiso sobre este paso): lo ve, pero no puede accionarlo —
-        // le toca al gerente/ejecutivo dueño de la cuenta subir el archivo.
-        chip = `<span class="chip pending">pendiente (vence ${fmtShort(ob.limiteEC)})</span> <span class="chip na">le corresponde al gerente/ejecutivo</span>`;
+    let obLines1 = '';
+    obs.forEach(ob=>{
+      const r1 = chipKpi1(c, ob, {puedeKpi1, esMiCuenta, today});
+      if(r1.conto){ eval1++; if(r1.aTiempo) onTime1++; }
+      if(ob.tipo==='quincenal'){
+        if(r1.pendiente) pendingKpi1ParaMi++;
+        obLines1 = `<div class="ob-line">${r1.chip}</div>`;
       }
-      return `<div class="ob-line">${tag}${chip}</div>`;
-    }).join('');
+    });
 
     let sinError2=0, eval2=0;
-    const obLines2 = obs.map(ob=>{
-      const rec = cumplimientoDocs[docId(c.id, ob.key)] || {};
-      const tag = ob.tipo==='semanal' ? `<span class="ob-tag">${ob.label}</span>` : (obs.length>1 ? `<span class="ob-tag">Quincenal</span>` : '');
-      let chip;
-      if(today <= ob.pago){
-        chip = `<span class="chip na">se activa tras el pago (${fmtShort(ob.pago)})</span>`;
-      } else if(rec.huboError === true){
-        const tags = (rec.erroresTipo||[]).map(t=>{
-          const label = t==='otro' && rec.otroTexto ? rec.otroTexto : (ERROR_LABELS[t]||t);
-          return `<span class="err-tag">${label}</span>`;
-        }).join('');
-        const quien2 = rec.errorConfirmadoPor ? `<div class="confirmado-por">${rec.errorConfirmadoPor}</div>` : '';
-        // "Corregir" — pedido del 28-sep: confirmaciones viejas (de cuando esto lo hacía Nómina
-        // /nominista, antes del cambio de permiso) se quedaban congeladas sin poder rehacerse
-        // desde que el gerente/ejecutivo tomó este paso. Permite reabrirla y volver a pasar por
-        // el flujo nuevo (con el catálogo de errores) en vez de quedar pegada al confirmado_por
-        // original.
-        const corregir2 = (puedeKpi2 && esMiCuenta) ? `<button class="link-btn" onclick="resetError('${c.id}','${ob.key}')">Corregir</button>` : '';
-        chip = `<span class="chip bad">✕ con error</span><div class="err-tags">${tags}</div>${quien2}${corregir2}`;
-        eval2++;
-      } else if(rec.huboError === false){
-        const quien2 = rec.errorConfirmadoPor ? `<div class="confirmado-por">${rec.errorConfirmadoPor}</div>` : '';
-        const corregir2 = (puedeKpi2 && esMiCuenta) ? `<button class="link-btn" onclick="resetError('${c.id}','${ob.key}')">Corregir</button>` : '';
-        chip = `<span class="chip ok">✓ sin error</span>${quien2}${corregir2}`;
-        eval2++; sinError2++;
-      } else if(puedeKpi2 && esMiCuenta){
-        pendingKpi2ParaMi++;
-        // El mismo gerente/ejecutivo que capturó la fecha real de entrega confirma aquí las dos
-        // cosas que faltan: que esa fecha es correcta y si hubo error o no en el pago — por eso
-        // se muestra la fecha capturada (para confirmar contra qué se está respondiendo).
-        const fechaTxt = rec.fechaConfirmacion ? `<div class="fecha-real">Entrega registrada: ${fmtShort(new Date(rec.fechaConfirmacion))}</div>` : '';
-        chip = `${fechaTxt}<div class="err-toggle">
-          <button class="sel-ok-btn" onclick="setError('${c.id}','${ob.key}',false)">Sin error</button>
-          <button class="sel-bad-btn" onclick="openErrorPrompt('${c.id}','${ob.key}','${ob.label}')">Con error</button>
-        </div>`;
-      } else {
-        // Nominista (u otro rol/cuenta sin permiso sobre este paso): lo ve, pero no puede
-        // accionarlo — ya no es Nómina quien confirma "cero errores" (cambio del 28-sep), sino
-        // el gerente/ejecutivo dueño de la cuenta.
-        chip = `<span class="chip na">esperando confirmación del gerente/ejecutivo</span>`;
+    let obLines2 = '';
+    obs.forEach(ob=>{
+      const r2 = chipKpi2(c, ob, {puedeKpi2, esMiCuenta, today});
+      if(r2.conto){ eval2++; if(r2.sinError) sinError2++; }
+      if(ob.tipo==='quincenal'){
+        if(r2.pendiente) pendingKpi2ParaMi++;
+        obLines2 = `<div class="ob-line">${r2.chip}</div>`;
       }
-      return `<div class="ob-line">${tag}${chip}</div>`;
-    }).join('');
+    });
 
     const tags = [];
     if(c.id===config.cuentaEsp) tags.push('<span class="especial-tag">paga antes</span>');
-    if(c.semanal==='siempre') tags.push('<span class="especial-tag">+ semanal</span>');
-    if(c.semanal==='temporada') tags.push(`<span class="especial-tag">${tieneSemanalActivo(c)?'+ semanal (temporada activa)':'+ semanal (temporada inactiva)'}</span>`);
+    if(c.semanal==='siempre') tags.push('<span class="especial-tag">+ semanal (ver Nómina semanal abajo)</span>');
+    if(c.semanal==='temporada') tags.push(`<span class="especial-tag">${tieneSemanalActivo(c)?'+ semanal (temporada activa — ver Nómina semanal abajo)':'+ semanal (temporada inactiva)'}</span>`);
 
     cuentaData[c.id] = {
       obLines1, obLines2, tags,
@@ -1520,7 +1564,73 @@ function render(){
   cfgSel.innerHTML = '<option value="">— Ninguna —</option>' + CUENTAS.map(c=>`<option value="${c.id}" ${c.id===config.cuentaEsp?'selected':''}>${c.id}</option>`).join('');
   document.getElementById('cfgTemporadaMultimarca').checked = !!(config.temporada && config.temporada.Multimarca);
   document.getElementById('cfgTemporadaSpinmaster').checked = !!(config.temporada && config.temporada.Spinmaster);
+
+  renderSemanal();
 }
+
+// "Nómina semanal" — sección independiente del selector de Quincena de arriba (pedido del
+// 28-sep: "semanal es independiente a la quincenal, debemos tener la visibilidad de las 4
+// semanas"). Antes cada semana solo se veía anidada dentro de la quincena a la que le tocaba por
+// fecha (2 de las ~4 semanas del mes por vista) — ahora esta tabla tiene su propio selector de
+// Semana y muestra/confirma cualquiera de ellas sin depender de qué quincena esté elegida.
+// Importante: el % de cumplimiento (KPI1/KPI2 de arriba, gerentes, Portada) NO cambia con esto —
+// sigue siendo exactamente el mismo cálculo combinado (quincenal+semanal) que ya hacía render();
+// esta sección es puramente para ver/confirmar cada semana, no agrega un puntaje nuevo.
+function renderSemanal(){
+  const section = document.getElementById('semanalSection');
+  const selS = document.getElementById('semanaSelect');
+  const tbody = document.getElementById('tbodySemanal');
+  if(!section || !selS || !tbody) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const vistaSimplificada = !!currentUser && currentUser.rol === 'admin';
+  const misCuentas = currentCuentaFilter();
+  const puedeKpi1 = puedeConfirmarKpi1(), puedeKpi2 = puedeConfirmarKpi2();
+
+  const cuentasSemanales = CUENTAS.filter(c => tieneSemanalActivo(c) && (misCuentas===null || misCuentas.includes(c.id)));
+  if(vistaSimplificada || !cuentasSemanales.length){ section.hidden = true; return; }
+  section.hidden = false;
+
+  if(!selectedSemana){
+    const next = SEMANAS.find(s=>s.pago>=today) || SEMANAS[SEMANAS.length-1];
+    selectedSemana = next.key;
+  }
+  selS.innerHTML = SEMANAS.map(s=>`<option value="${s.key}" ${s.key===selectedSemana?'selected':''}>${s.label} — pago ${fmtShort(s.pago)}</option>`).join('');
+  const semana = SEMANAS.find(s=>s.key===selectedSemana) || SEMANAS[0];
+
+  let pendingKpi1Semanal = 0, pendingKpi2Semanal = 0;
+  const filas = cuentasSemanales.map(c=>{
+    const esMiCuenta = misCuentas===null || misCuentas.includes(c.id);
+    const ob = { tipo:'semanal', key: semana.key, label: semana.label, ...deadlinesForSemanal(semana) };
+    const r1 = chipKpi1(c, ob, {puedeKpi1, esMiCuenta, today});
+    const r2 = chipKpi2(c, ob, {puedeKpi2, esMiCuenta, today});
+    if(r1.pendiente) pendingKpi1Semanal++;
+    if(r2.pendiente) pendingKpi2Semanal++;
+    return `<tr>
+      <td><span class="cuenta-name">${c.id}</span></td>
+      <td><div class="ob-line">${r1.chip}</div></td>
+      <td><div class="ob-line">${r2.chip}</div></td>
+    </tr>`;
+  }).join('');
+  tbody.innerHTML = filas;
+
+  let banner = document.getElementById('pendingMioResumenSemanal');
+  if(!banner){
+    banner = document.createElement('div');
+    banner.id = 'pendingMioResumenSemanal';
+    banner.style.cssText = 'color:var(--warn);font-size:12px;line-height:1.4;margin:-4px 0 12px;';
+    section.querySelector('.semana-controls').insertAdjacentElement('afterend', banner);
+  }
+  if(puedeKpi2 && pendingKpi2Semanal>0){
+    banner.hidden = false;
+    banner.textContent = `Tienes ${pendingKpi2Semanal} obligación${pendingKpi2Semanal>1?'es':''} de nómina semanal esperando tu confirmación de "cero errores".`;
+  } else if(puedeKpi1 && pendingKpi1Semanal>0){
+    banner.hidden = false;
+    banner.textContent = `Tienes ${pendingKpi1Semanal} entrega${pendingKpi1Semanal>1?'s':''} de nómina semanal pendiente${pendingKpi1Semanal>1?'s':''} de confirmar.`;
+  } else {
+    banner.hidden = true;
+  }
+}
+document.getElementById('semanaSelect').addEventListener('change', e=>{ selectedSemana = e.target.value; renderSemanal(); });
 
 function renderEmetrix(){
   const today = new Date(); today.setHours(0,0,0,0);

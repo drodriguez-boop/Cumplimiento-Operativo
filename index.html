@@ -1815,10 +1815,17 @@ function renderPortadaStats(){
   const seleccion = sel.value || opciones[0];
   let scoresObj;
   if(seleccion === '__todos__'){
+    // Promedio simple entre los gerentes que SÍ tienen dato de este KPI todavía (ignora los que
+    // no, en vez de exigir que todos lo tengan) — mismo criterio que ya usan las tarjetas grandes
+    // de cada pestaña (kpi1Value/kpi2Value/kpi3Value/kpi4Value vía kpiXEvalGerentes/kpiXSum).
+    // Antes, si a UN solo gerente le faltaba el dato (por ejemplo KPI2 antes de que se pague su
+    // quincena), toda la tarjeta se iba a "N/D" aunque los demás gerentes sí tuvieran confirmado
+    // — corregido el 28-sep, era el motivo por el que KPI2/KPI3 se veían en N/D en la Portada
+    // aunque ya hubiera confirmaciones reales cargadas.
     scoresObj = {};
     for(const k of Object.keys(OKR_PESOS)){
-      const vals = GERENTES_VIEW.map(g=>(gerenteKpiScores[g.nombre]||{})[k]);
-      scoresObj[k] = vals.some(v=>v===undefined||v===null) ? null : vals.reduce((a,b)=>a+b,0)/vals.length;
+      const vals = GERENTES_VIEW.map(g=>(gerenteKpiScores[g.nombre]||{})[k]).filter(v=>v!==undefined && v!==null);
+      scoresObj[k] = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
     }
   } else {
     scoresObj = gerenteKpiScores[seleccion] || {};

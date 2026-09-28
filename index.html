@@ -262,16 +262,23 @@ details.config[open] summary::before{transform:rotate(90deg);}
 .okr-row-pct.na{color:var(--muted-soft);font-weight:600;font-size:12.5px;}
 .okr-row-caret{width:16px;text-align:center;color:var(--muted);font-size:11px;flex-shrink:0;}
 .okr-row-detail{padding:2px 24px 22px 24px;background:var(--paper);}
-.okr-row-detail .gauge-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;max-width:600px;margin-left:auto;padding-top:14px;}
+.mes-historial-label{font-family:var(--font-sans);font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);padding-top:14px;margin-bottom:8px;}
+.mes-historial{max-width:340px;margin-left:auto;border:1px solid var(--rule);border-radius:10px;overflow:hidden;background:var(--paper-pure);}
+.mes-historial-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 14px;border-bottom:1px solid var(--rule);}
+.mes-historial-row:last-child{border-bottom:none;}
+.mes-historial-mes{font-family:var(--font-sans);font-size:12.5px;color:var(--ink);}
+.mes-historial-pct{font-family:var(--font-mono);font-weight:700;font-size:13px;}
+.mes-historial-pct.ok{color:var(--positive);}
+.mes-historial-pct.bad{color:var(--critical);}
+.mes-historial-pct.mid{color:var(--accent);}
+.mes-historial-pct.na{color:var(--muted-soft);font-weight:600;}
 @media (max-width:640px){
   .okr-board-head{display:none;}
   .okr-row-main{flex-wrap:wrap;gap:8px 14px;}
   .okr-row-name{width:100%;}
   .okr-row-barwrap{order:3;width:100%;flex:0 0 100%;}
-  .okr-row-detail .gauge-row{grid-template-columns:repeat(2,1fr);max-width:none;}
+  .mes-historial{max-width:none;margin-left:0;}
 }
-.gauge-item{display:flex;flex-direction:column;align-items:center;gap:6px;}
-.gauge-item .gauge-label{font-family:var(--font-sans);font-size:10.5px;font-weight:600;color:var(--muted);text-align:center;line-height:1.4;}
 </style>
 </head>
 <body>
@@ -1138,12 +1145,89 @@ function obligacionesFor(quincena, cuenta){
   return obs;
 }
 
+// --- Puntajes "puros" de KPI1/KPI2 para una quincena cualquiera (sin generar HTML) ---
+// Se separan de render() (que solo calcula para la quincena que esté elegida en el selector de
+// la pestaña Nómina) para que la Portada pueda mostrar siempre el estado de la última quincena
+// YA CERRADA, sin importar qué quincena haya quedado seleccionada en esa otra pestaña — antes,
+// si alguien dejaba el selector en una quincena futura (la próxima a pagarse), la Portada se
+// quedaba en "N/D" aunque ya hubiera confirmaciones reales en una quincena anterior (bug
+// reportado el 28-sep: "no enlaza aún la confirmación de que se recibieron sin errores").
+function scoresQuincenaPorCuenta(quincena){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const data = {};
+  CUENTAS.forEach(c=>{
+    const obs = obligacionesFor(quincena, c);
+    let onTime1=0, eval1=0, sinError2=0, eval2=0;
+    obs.forEach(ob=>{
+      const rec = cumplimientoDocs[docId(c.id, ob.key)] || {};
+      const confirmado = rec.fechaConfirmacion ? new Date(rec.fechaConfirmacion) : null;
+      if(confirmado){ eval1++; if(confirmado <= ob.limiteEC) onTime1++; }
+      else if(today > ob.limiteEC){ eval1++; }
+      if(today > ob.pago){
+        if(rec.huboError === true) eval2++;
+        else if(rec.huboError === false){ eval2++; sinError2++; }
+      }
+    });
+    data[c.id] = { score1: eval1>0 ? onTime1/eval1 : null, score2: eval2>0 ? sinError2/eval2 : null };
+  });
+  return data;
+}
+function scoresQuincenaPorGerente(quincena){
+  const cuentaScores = scoresQuincenaPorCuenta(quincena);
+  const out = {};
+  visibleGerentes().forEach(g=>{
+    const s1 = g.cuentas.map(cid=>cuentaScores[cid].score1).filter(s=>s!==null);
+    const s2 = g.cuentas.map(cid=>cuentaScores[cid].score2).filter(s=>s!==null);
+    out[g.nombre] = {
+      score1: s1.length ? s1.reduce((a,b)=>a+b,0)/s1.length : null,
+      score2: s2.length ? s2.reduce((a,b)=>a+b,0)/s2.length : null,
+    };
+  });
+  return out;
+}
+// La última quincena cuyo pago ya pasó (o ya es hoy) — "cerrada" para efectos de reportar
+// cumplimiento estable en la Portada. buildQuincenas() ya viene ordenada por fecha de pago.
+function ultimaQuincenaCerrada(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const quincenas = buildQuincenas();
+  const cerradas = quincenas.filter(q=>q.pago<=today);
+  return cerradas.length ? cerradas[cerradas.length-1] : quincenas[0];
+}
+
 // --- KPI 3 · Emetrix: ciclo mensual, no quincenal. Cada mes que cierra tiene un plazo para
 // entregar el plan de trabajo/ruteo del mes SIGUIENTE. Confirmado contigo (cambio del 28-sep):
 // el plazo es el último día calendario del mes que cierra, sin ajuste por fin de semana —
 // mismo criterio que ya se usa en Gastos (ver cierreMes más abajo). Antes era el día 25 ajustado
 // al viernes anterior si caía en fin de semana; ya no.
 function ultimoDiaDelMes(y,m){ return new Date(y,m,0); } // día 0 del mes siguiente = último día de "m"
+
+// Puntaje "puro" de KPI3 para un mes cualquiera (mismo motivo que scoresQuincenaPorGerente:
+// que la Portada pueda usar el último mes YA CERRADO sin depender del selector de la pestaña
+// Plan de trabajo). Ojo: el puntaje headline sigue siendo solo el paso 1 (gerente/ejecutivo
+// sube el plan a tiempo) — la confirmación de Abraham sigue sin estar incluida aquí, pendiente
+// esa decisión.
+function scoresMesPorCuenta(per){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const data = {};
+  CUENTAS.forEach(c=>{
+    const rec = cumplimientoEmetrixDocs[docId(c.id, per.key)] || {};
+    const confirmado = rec.fechaConfirmacion ? new Date(rec.fechaConfirmacion) : null;
+    let score = null;
+    if(confirmado){ score = confirmado <= per.deadline ? 1 : 0; }
+    else if(today > per.deadline){ score = 0; }
+    data[c.id] = score;
+  });
+  return data;
+}
+function scoresMesPorGerente(per){
+  const cuentaScores = scoresMesPorCuenta(per);
+  const out = {};
+  visibleGerentes().forEach(g=>{
+    const vals = g.cuentas.map(cid=>cuentaScores[cid]).filter(s=>s!==null && s!==undefined);
+    out[g.nombre] = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+  });
+  return out;
+}
 
 // Incluye 3 meses hacia atrás (para poder capturar la fecha real de un plan de trabajo de un
 // mes ya cerrado, como agosto) y 5 meses hacia adelante, igual que antes.
@@ -1160,6 +1244,14 @@ function buildMeses(){
     m++; if(m>12){m=1;y++;}
   }
   return list;
+}
+// El último "mes que cierra" cuyo plazo (deadline) ya pasó — "cerrado" para la Portada, mismo
+// criterio que ultimaQuincenaCerrada().
+function ultimoMesCerrado(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const meses = buildMeses();
+  const cerrados = meses.filter(p=>p.deadline<=today);
+  return cerrados.length ? cerrados[cerrados.length-1] : meses[0];
 }
 
 // --- KPI 4 · Gastos: mes calendario, no día hábil (confirmado contigo: "antes de que cierre
@@ -1783,6 +1875,69 @@ function gaugeSVG(score, size){
   </div>`;
 }
 
+// Recalcula KPI1/KPI2/KPI3 en gerenteKpiScores usando la última quincena y el último mes YA
+// CERRADOS (ultimaQuincenaCerrada/ultimoMesCerrado) — sin importar qué periodo haya quedado
+// seleccionado en las pestañas de Nómina/Plan de trabajo. Se llama al inicio de renderPortada(),
+// así que sus resultados pisan (a propósito) lo que render()/renderEmetrix() hayan dejado ahí
+// para SU PROPIO periodo seleccionado — la Portada necesita una foto estable del cumplimiento
+// general, no depender de en qué quincena/mes se haya quedado alguien navegando en otra pestaña.
+// KPI4 (gastos) no se toca aquí — sigue viniendo de renderGastos(), no se ha pedido este mismo
+// tratamiento todavía.
+function actualizarScoresPortada(){
+  const q = ultimaQuincenaCerrada();
+  const scoresQ = scoresQuincenaPorGerente(q);
+  const per = ultimoMesCerrado();
+  const scoresM = scoresMesPorGerente(per);
+  visibleGerentes().forEach(g=>{
+    const s = scoresQ[g.nombre] || {};
+    setGerenteScore(g.nombre, 'kpi1', s.score1 !== undefined ? s.score1 : null);
+    setGerenteScore(g.nombre, 'kpi2', s.score2 !== undefined ? s.score2 : null);
+    setGerenteScore(g.nombre, 'kpi3', scoresM[g.nombre] !== undefined ? scoresM[g.nombre] : null);
+  });
+}
+
+// Historial de cumplimiento por mes para un gerente — reemplaza los 4 medidores del detalle
+// expandible (duplicaban lo que ya se ve en las tarjetas de arriba, confirmado contigo el
+// 28-sep). Por cada uno de los últimos `nMeses` meses calendario, saca un % simple promediando
+// los KPIs que sí tengan dato ese mes (KPI1/KPI2 combinando las quincenas que caen en ese mes;
+// KPI3 con el plan cuyo plazo cierra ese mes) — KPI4/gastos se deja fuera por ahora, sigue en
+// pausa. Si un mes no tiene ningún KPI evaluable todavía, se reporta "N/D" en vez de inventar
+// un número.
+function historialMensualGerente(nombre, nMeses){
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const quincenas = buildQuincenas();
+  const meses = buildMeses();
+  const out = [];
+  let y = hoy.getFullYear(), m = hoy.getMonth()+1;
+  for(let i=0;i<nMeses;i++){
+    const qsDelMes = quincenas.filter(q=>q.pago.getFullYear()===y && q.pago.getMonth()+1===m && q.pago<=hoy);
+    const k1vals = [], k2vals = [];
+    qsDelMes.forEach(q=>{
+      const s = scoresQuincenaPorGerente(q)[nombre];
+      if(s){
+        if(s.score1!==null && s.score1!==undefined) k1vals.push(s.score1);
+        if(s.score2!==null && s.score2!==undefined) k2vals.push(s.score2);
+      }
+    });
+    const kpi1 = k1vals.length ? k1vals.reduce((a,b)=>a+b,0)/k1vals.length : null;
+    const kpi2 = k2vals.length ? k2vals.reduce((a,b)=>a+b,0)/k2vals.length : null;
+
+    const perDelMes = meses.find(p=>p.key===`${y}-${String(m).padStart(2,'0')}`);
+    let kpi3 = null;
+    if(perDelMes && perDelMes.deadline<=hoy){
+      const s3 = scoresMesPorGerente(perDelMes)[nombre];
+      kpi3 = (s3===undefined) ? null : s3;
+    }
+
+    const vals = [kpi1,kpi2,kpi3].filter(v=>v!==null && v!==undefined);
+    const pct = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+    const label = new Date(y,m-1,1).toLocaleString('es-MX',{month:'long',year:'numeric'});
+    out.push({label, pct});
+    m--; if(m<1){m=12;y--;}
+  }
+  return out; // más reciente primero
+}
+
 // En la Portada, cada tarjeta de gerente arranca colapsada — solo se ve el % OKR total. El
 // detalle por KPI se abre al dar clic. Se guarda aquí (no en el DOM) para que sobreviva a los
 // re-render de renderPortada() cada vez que llegan datos nuevos.
@@ -1845,6 +2000,9 @@ function renderPortadaStats(){
 document.getElementById('portadaGerenteSelect').addEventListener('change', renderPortadaStats);
 
 function renderPortada(){
+  // Antes de leer gerenteKpiScores para cualquier cosa (tarjetas de arriba o filas de abajo),
+  // se refresca con el último periodo YA CERRADO — ver actualizarScoresPortada().
+  actualizarScoresPortada();
   renderPortadaStats();
   const cont = document.getElementById('portadaGerentes');
   const GERENTES_VIEW = visibleGerentes();
@@ -1856,13 +2014,18 @@ function renderPortada(){
     const pctLabel = okrScore===null ? 'N/D' : Math.round(okrScore*100)+'%';
     const barPct = okrScore===null ? 0 : Math.max(0,Math.min(1,okrScore))*100;
     const barColor = okrScore===null ? 'var(--rule-strong)' : (okrScore>=1?'var(--positive)':(okrScore<=0?'var(--critical)':'var(--accent)'));
-    const gauges = PORTADA_KPIS.map(k=>{
-      const score = scoresObj[k.key] !== undefined ? scoresObj[k.key] : null;
-      return `<div class="gauge-item">
-        ${gaugeSVG(score, 56)}
-        <span class="gauge-label">${k.label}</span>
+    // El detalle expandible ya no repite los mismos 4 KPIs que las tarjetas de arriba (pedido
+    // del 28-sep: "se ve como duplicada la información") — ahora muestra la tendencia de
+    // cumplimiento de los últimos meses para este gerente. Solo se calcula si está expandido,
+    // para no recorrer meses/quincenas de los gerentes que siguen colapsados en cada render.
+    const historialHtml = expanded ? historialMensualGerente(g.nombre, 4).map(m=>{
+      const cls = m.pct===null ? 'na' : (m.pct>=1?'ok':(m.pct<=0?'bad':'mid'));
+      const label = m.pct===null ? 'N/D' : Math.round(m.pct*100)+'%';
+      return `<div class="mes-historial-row">
+        <span class="mes-historial-mes">${m.label}</span>
+        <span class="mes-historial-pct ${cls}">${label}</span>
       </div>`;
-    }).join('');
+    }).join('') : '';
     return `<div class="okr-row">
       <div class="okr-row-main" onclick="togglePortadaCard('${g.nombre}')" role="button" tabindex="0">
         <div class="okr-row-name">
@@ -1876,7 +2039,8 @@ function renderPortada(){
         <div class="okr-row-caret">${expanded?'▴':'▾'}</div>
       </div>
       <div class="okr-row-detail" ${expanded?'':'hidden'}>
-        <div class="gauge-row">${gauges}</div>
+        <div class="mes-historial-label">Cumplimiento por mes</div>
+        <div class="mes-historial">${historialHtml}</div>
       </div>
     </div>`;
   }).join('');

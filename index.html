@@ -448,10 +448,10 @@ details.config[open] summary::before{transform:rotate(90deg);}
       <li>Los días de proceso interno de Nómina (arriba) siguen siendo un supuesto mío — falta que Josie los confirme.</li>
       <li>Si el pago cae el 30 en un mes que no tiene 30 días (ej. febrero), se usa el último día del mes — avísenle a Josie por si aplica otra regla.</li>
       <li>El KPI 2 de cada obligación (quincenal o semanal) solo se puede marcar una vez que ya pasó su propia fecha de pago.</li>
-      <li><strong>Nómina semanal (ADM, Multimarca, Spin Master):</strong> el % de KPI queda unido en un solo número por cuenta — no hay tablero separado. Para las cuentas con proceso semanal, cada fila muestra la obligación quincenal y, debajo, cada semana (jueves) que caiga dentro de esa quincena.</li>
-      <li>El detalle del ciclo semanal (lunes=envío, martes=límite Operaciones, miércoles=doble check, jueves=pago) es mi mapeo del procedimiento POP-NOM-002 llevado a nivel día — como acordamos, sin precisión de horas. Confírmalo si no es exactamente así.</li>
+      <li><strong>Nómina semanal (ADM, Multimarca, Spin Master):</strong> el % de KPI queda unido en un solo número por cuenta junto con la quincenal, pero la vista/confirmación es independiente — tiene su propia sección "Nómina semanal" más abajo, con su propio selector de semana (ver nota siguiente).</li>
+      <li><strong>Corregido el 3-oct — ciclo semanal vencido:</strong> la semana es natural, de lunes a domingo (7 días), y se paga vencida: el envío (lo que confirma el gerente/ejecutivo como KPI1) cae el martes siguiente al domingo en que cierra la semana, y el pago (lo que activa el KPI2 de error) cae el jueves siguiente a ese martes — por ejemplo, la semana del 24 al 30 de agosto se envía el 1-sep y se paga el 3-sep. Antes esta herramienta calculaba mal esa fecha (comparaba contra un jueves dentro de la misma semana, ya vencido), por eso todo salía "fuera de tiempo". Los pasos internos de límite de Operaciones y doble check siguen existiendo dentro de Nómina, pero aquí solo se pide confirmar la fecha de envío y si hubo error.</li>
       <li>Multimarca y Spin Master no tienen temporada con fechas fijas ("se activan de un día para otro"), así que el interruptor de temporada en Configuración es manual — actívalo cuando el proyecto arranque y apágalo cuando cierre.</li>
-      <li>El ajuste por día feriado que menciona POP-NOM-002 (recorrer el jueves de pago al día hábil anterior) todavía no está implementado — falta un calendario de feriados de México.</li>
+      <li>El ajuste por día feriado (si el martes de envío o el jueves de pago cae en feriado) todavía no está implementado — falta un calendario de feriados de México.</li>
       <li><strong>El % ahora se calcula por gerente, no por cuenta:</strong> cada gerente pesa igual (100% entre todos los gerentes), y si trae varias cuentas, su % es el promedio simple de esas cuentas. Esto es ajustable — si Carlos prefiere ponderar distinto dentro del portafolio de un gerente (por ejemplo, por número de colaboradores por cuenta), se puede cambiar sin rehacer la herramienta.</li>
     </ul>
   </div>
@@ -1168,29 +1168,32 @@ function buildQuincenas(){
   return list;
 }
 
-// Nómina semanal (POP-NOM-002): ciclo lunes→jueves, pago siempre jueves. El documento define
-// el detalle en horas dentro del día (ej. "≤3h el martes") pero, para no complicar la
-// herramienta, aquí se maneja por día — igual que en lo quincenal (confirmado contigo).
-// Mapeo de jornadas asumido a partir del procedimiento: lunes = envío prenómina/altas-bajas,
-// martes = límite de Operaciones para incidencias, miércoles = doble check, jueves = pago.
-// Pendiente: el documento también define que si un jueves cae en día feriado se recorre al
-// día hábil inmediato anterior preservando el jueves como "fecha de pago conceptual" — eso
-// necesita un calendario de feriados de México que este prototipo todavía no tiene, así que
-// por ahora solo se generan jueves calendario (sin ajuste por feriado).
+// Nómina semanal — corregido el 3-oct: la semana es NATURAL, de lunes a domingo (7 días), y se
+// paga VENCIDA (después de que termina), no dentro de la misma semana como se había programado
+// antes (ese primer intento marcaba todo "fuera de tiempo" porque comparaba contra un jueves que
+// ya había pasado dentro de la propia semana). Confirmado contigo con tu ejemplo puntual: la
+// semana del 24 al 30 de agosto (lunes a domingo) se ENVÍA el martes siguiente (1-sep, 2 días de
+// calendario después del domingo) y se PAGA el jueves siguiente a ese martes (3-sep). Los pasos
+// internos de límite de Operaciones y doble check siguen existiendo dentro de Nómina, pero lo
+// único que esta herramienta pide confirmar es la fecha de envío (KPI1) y si hubo error (KPI2) —
+// igual que antes. Pendiente: el ajuste por día feriado (si el martes o el jueves cae en
+// feriado) no está implementado todavía, sigue siendo un hueco conocido.
 function buildSemanas(){
   const today = new Date(); today.setHours(0,0,0,0);
-  const dow = today.getDay(); // 0=dom..4=jue
-  let jueves = new Date(today);
-  const diff = (4 - dow + 7) % 7;
-  jueves.setDate(jueves.getDate() + diff);
-  jueves.setDate(jueves.getDate() - 13*7); // retrocede ~13 semanas (3 meses) para poder
+  const dow = today.getDay(); // 0=dom..6=sáb
+  const diffLunes = (dow + 6) % 7; // días desde el lunes más reciente (0 si hoy ya es lunes)
+  let lunes = new Date(today);
+  lunes.setDate(lunes.getDate() - diffLunes);
+  lunes.setDate(lunes.getDate() - 13*7); // retrocede ~13 semanas (3 meses) para poder
   // capturar fechas reales de semanas ya cerradas, igual que se hizo con las quincenas.
   const list=[];
   for(let i=0;i<30;i++){ // ~3 meses hacia atrás + ~4 meses hacia adelante
-    const pago = new Date(jueves);
-    const lunes = subDays(pago,3);
-    list.push({key:'sem-'+iso(pago), pago, inicio:lunes, label:`Semana del ${fmtShort(lunes)} al ${fmtShort(pago)}`});
-    jueves.setDate(jueves.getDate()+7);
+    const inicio = new Date(lunes);
+    const fin = new Date(inicio); fin.setDate(fin.getDate()+6); // domingo, cierre de la semana natural
+    const envio = new Date(fin); envio.setDate(envio.getDate()+2); // martes siguiente
+    const pago = new Date(envio); pago.setDate(pago.getDate()+2); // jueves siguiente
+    list.push({key:'sem-'+iso(inicio), inicio, fin, envio, pago, label:`Semana del ${fmtShort(inicio)} al ${fmtShort(fin)}`});
+    lunes.setDate(lunes.getDate()+7);
   }
   return list;
 }
@@ -1211,13 +1214,16 @@ function deadlinesFor(quincena, cuentaId){
   return {pago, dobleCheck, limiteEC};
 }
 
-// Misma lógica de plazos que lo quincenal (límite EC / doble check antes del pago), aplicada
-// al ciclo corto lunes-jueves. No hay cuenta especial dentro de lo semanal — el adelanto de
-// 2 días solo aplica a la parte quincenal de ADM.
+// El "límite EC" (KPI1: fecha de envío) de una semana ya es un dato fijo de la propia semana
+// (envio, el martes siguiente al domingo de cierre — ver buildSemanas) y el pago es el jueves
+// siguiente a ese martes. dobleCheck queda como el miércoles entre ambos solo por completar la
+// forma {pago, dobleCheck, limiteEC} que usan chipKpi1/chipKpi2 — no se expone en la UI. No hay
+// cuenta especial dentro de lo semanal — el adelanto de 2 días solo aplica a la parte quincenal
+// de ADM.
 function deadlinesForSemanal(semana){
+  const limiteEC = new Date(semana.envio);
+  const dobleCheck = new Date(limiteEC); dobleCheck.setDate(dobleCheck.getDate()+1);
   const pago = new Date(semana.pago);
-  const dobleCheck = prevBusinessDay(subDays(pago,1));
-  const limiteEC = prevBusinessDay(subDays(pago,2));
   return {pago, dobleCheck, limiteEC};
 }
 
